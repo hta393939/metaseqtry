@@ -321,6 +321,12 @@ enum NodeType {
 	NODE_JOINT = 2,
 };
 
+// @see Transform.h#L89
+enum AnimationAttr {
+	ANIMATE_ROTATE_TRANSLATE = 16,
+	ANIMATE_SCALE_ROTATE_TRANSLATE = 17,
+};
+
 #pragma pack(push,1)
 
 /// <summary>
@@ -353,14 +359,6 @@ struct GPBScene {
 	}
 };
 
-struct PMDFileVertexList {
-	float pos[3];
-	float normal_vec[3];
-	float uv[2];
-	unsigned short bone_num[2];
-	unsigned char bone_weight;
-	unsigned char edge_flag;
-};
 #pragma pack(pop)
 
 struct PMDBoneParam {
@@ -619,12 +617,26 @@ BOOL ExportPMDPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 	GPBScene scene;
 	std::vector<GPBKey> keyvals;
 
-	for (int i = 0; i < 2; ++i) {
+	for (int i = 0; i < 3; ++i) {
 		GPBKey keyval;
-		keyval.msec = 60 * 1000 * i;
-		keyval.p[0] = (i == 0) ? 0.0f : 1.0f;
-		keyval.p[1] = (i == 0) ? -1.0f : 1.0f;
-		keyval.p[2] = (i == 0) ? 1.0f : 0.0f;
+		keyval.msec = 30 * 1000 * i;
+		switch (i) {
+		case 0:
+			keyval.p[0] = 0.0f;
+			keyval.p[1] = 0.0f;
+			keyval.p[2] = 0.0f;
+			break;
+		case 1:
+			keyval.p[0] = 0.5f;
+			keyval.p[1] = 1.0f;
+			keyval.p[2] = 0.0f;
+			break;
+		case 2:
+			keyval.p[0] = 1.0f;
+			keyval.p[1] = 0.0f;
+			keyval.p[2] = 1.0f;
+			break;
+		}
 		keyvals.push_back(keyval);
 	}
 
@@ -719,8 +731,6 @@ BOOL ExportPMDPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 	if(setting != NULL){
 		setting->Load("VisibleOnly", option.visible_only, option.visible_only);
 		setting->Load("Bone", option.output_bone, option.output_bone);
-		setting->Load("IKEnd", option.output_ik_end, option.output_ik_end);
-		setting->Load("Facial", option.output_facial, option.output_facial);
 	}
 	MQFileDialogInfo dlginfo;
 	memset(&dlginfo, 0, sizeof(dlginfo));
@@ -729,7 +739,7 @@ BOOL ExportPMDPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 	dlginfo.hidden_flag = MQFileDialogInfo::HIDDEN_AXIS | MQFileDialogInfo::HIDDEN_INVERT_FACE;
 	dlginfo.axis_x = MQFILE_TYPE_RIGHT;
 	dlginfo.axis_y = MQFILE_TYPE_UP;
-	dlginfo.axis_z = MQFILE_TYPE_FRONT;
+	dlginfo.axis_z = MQFILE_TYPE_BACK;
 	dlginfo.softname = "";
 	dlginfo.dialog_callback = CreateDialogOption;
 	dlginfo.dialog_callback_ptr = &option;
@@ -1400,7 +1410,7 @@ BOOL ExportPMDPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 	fwrite(&nodeNum, sizeof(DWORD), 1, fh);
 	for (int i = 0; i < nodeNum; ++i) {
 		auto offset = ftell(fh);
-		DWORD nodeType = 1;
+		DWORD nodeType = NODE_NODE;
 		switch (i) {
 		case 0:
 			nodeType = NODE_JOINT;
@@ -1423,16 +1433,17 @@ BOOL ExportPMDPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 
 		MAnsiString parent("");
 		DWORD parentByteNum = parent.length();
-		fwrite(&parentByteNum, sizeof(BYTE), 1, fh);
+		fwrite(&parentByteNum, sizeof(DWORD), 1, fh);
 		fwrite(parent.c_str(), sizeof(char), parentByteNum, fh);
 
 		DWORD childNum = 0;
 		fwrite(&childNum, sizeof(DWORD), 1, fh);
 
-		DWORD zero[2] = { 0, 0 }; // camera, light
-		fwrite(&zero, sizeof(DWORD), 2, fh);
+		BYTE camlight[2] = { 0, 0 }; // camera, light
+		fwrite(&camlight, sizeof(BYTE), 2, fh);
 
 		// model
+		DWORD zero = 0;
 		switch (i) {
 		case 0:
 			fwrite(&zero, sizeof(DWORD), 1, fh);
@@ -1463,9 +1474,11 @@ BOOL ExportPMDPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 		}
 
 	}
+
 	DWORD cameraNameLength = scene.cameraName.length();
 	fwrite(&cameraNameLength, sizeof(DWORD), 1, fh);
 	fwrite(scene.cameraName.c_str(), sizeof(char), cameraNameLength, fh);
+
 	fwrite(scene.ambient, sizeof(BYTE), 1, fh);
 	fwrite(scene.ambient + 1, sizeof(BYTE), 1, fh);
 	fwrite(scene.ambient + 2, sizeof(BYTE), 1, fh);
@@ -1474,7 +1487,11 @@ BOOL ExportPMDPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 	refTable[indexAnimations].offset = ftell(fh);
 	DWORD animationNum = 1;
 	fwrite(&animationNum, sizeof(DWORD), 1, fh);
+
 	MAnsiString animationName = "animations"; // この名前であることが必要
+	DWORD animationNameByteNum = animationName.length();
+	fwrite(&animationNameByteNum, sizeof(DWORD), 1, fh);
+	fwrite(animationName.c_str(), sizeof(char), animationNameByteNum, fh);
 
 	DWORD channelNum = 1;
 	fwrite(&channelNum, sizeof(DWORD), 1, fh);
@@ -1483,7 +1500,7 @@ BOOL ExportPMDPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 		DWORD targetNameLength = targetName.length();
 		fwrite(&targetNameLength, sizeof(DWORD), 1, fh);
 		fwrite(targetName.c_str(), sizeof(char), targetNameLength, fh);
-		DWORD valType = 16; // tamane2 は 16 回転と移動
+		DWORD valType = ANIMATE_ROTATE_TRANSLATE; // tamane2 は 16 回転と移動
 		fwrite(&valType, sizeof(DWORD), 1, fh);
 
 		// キー配列
