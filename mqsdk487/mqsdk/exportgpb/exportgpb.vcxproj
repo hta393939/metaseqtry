@@ -222,6 +222,9 @@
     <ClInclude Include="MString.h" />
     <ClInclude Include="tinyxml2.h" />
   </ItemGroup>
+  <ItemGroup>
+    <Xml Include="exportgpb.resource.xml" />
+  </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
   </ImportGroup>
