@@ -113,11 +113,11 @@ static MString GetResourceDir()
 }
 #endif
 
-class ExportPMDPlugin : public MQExportPlugin
+class ExportGPBPlugin : public MQExportPlugin
 {
 public:
-	ExportPMDPlugin();
-	~ExportPMDPlugin();
+	ExportGPBPlugin();
+	~ExportGPBPlugin();
 
 	// Get a plug-in ID
 	// プラグインIDを返す。
@@ -146,11 +146,6 @@ private:
 		MString en;
 		MString group;
 	};
-	struct BoneIKNameSetting {
-		MString bone;
-		MString ik;
-		MString ikend;
-	};
 	struct BoneGroupSetting {
 		MString jp;
 		MString en;
@@ -158,33 +153,32 @@ private:
 
 	BoneNameSetting m_RootBoneName;
 	std::vector<BoneNameSetting> m_BoneNameSetting;
-	std::vector<BoneIKNameSetting> m_BoneIKNameSetting;
 	std::vector<BoneGroupSetting> m_BoneGroupSetting;
 	bool LoadBoneSettingFile();
 };
 
 
-ExportPMDPlugin::ExportPMDPlugin()
+ExportGPBPlugin::ExportGPBPlugin()
 {
 }
 
-ExportPMDPlugin::~ExportPMDPlugin()
+ExportGPBPlugin::~ExportGPBPlugin()
 {
 }
 
 
-void ExportPMDPlugin::GetPlugInID(DWORD *Product, DWORD *ID)
+void ExportGPBPlugin::GetPlugInID(DWORD *Product, DWORD *ID)
 {
 	*Product = MY_PRODUCT;
 	*ID      = MY_ID;
 }
 
-const char *ExportPMDPlugin::GetPlugInName(void)
+const char *ExportGPBPlugin::GetPlugInName(void)
 {
 	return MY_PLUGINNAME;
 }
 
-const char *ExportPMDPlugin::EnumFileType(int index)
+const char *ExportGPBPlugin::EnumFileType(int index)
 {
 	if(index == 0){
 		return MY_FILETYPE;
@@ -192,7 +186,7 @@ const char *ExportPMDPlugin::EnumFileType(int index)
 	return NULL;
 }
 
-const char *ExportPMDPlugin::EnumFileExt(int index)
+const char *ExportGPBPlugin::EnumFileExt(int index)
 {
 	if(index == 0){
 		return MY_EXT;
@@ -201,7 +195,7 @@ const char *ExportPMDPlugin::EnumFileExt(int index)
 }
 
 
-class PMDOptionDialog : public MQDialog
+class GPBOptionDialog : public MQDialog
 {
 public:
 	MQCheckBox *check_visible;
@@ -211,12 +205,12 @@ public:
 	MQEdit *edit_modelname;
 	MQMemo *memo_comment;
 
-	PMDOptionDialog(int id, int parent_frame_id, ExportPMDPlugin *plugin, MLanguage& language);
+	GPBOptionDialog(int id, int parent_frame_id, ExportGPBPlugin *plugin, MLanguage& language);
 
 	BOOL ComboBoneChanged(MQWidgetBase *sender, MQDocument doc);
 };
 
-PMDOptionDialog::PMDOptionDialog(int id, int parent_frame_id, ExportPMDPlugin *plugin, MLanguage& language) : MQDialog(id)
+GPBOptionDialog::GPBOptionDialog(int id, int parent_frame_id, ExportGPBPlugin *plugin, MLanguage& language) : MQDialog(id)
 {
 	MQFrame parent(parent_frame_id);
 
@@ -262,7 +256,7 @@ PMDOptionDialog::PMDOptionDialog(int id, int parent_frame_id, ExportPMDPlugin *p
 	//memo_comment->SetMaxLength(256);
 }
 
-BOOL PMDOptionDialog::ComboBoneChanged(MQWidgetBase *sender, MQDocument doc)
+BOOL GPBOptionDialog::ComboBoneChanged(MQWidgetBase *sender, MQDocument doc)
 {
 	combo_ikend->SetEnabled(combo_bone->GetCurrentIndex() == 1);
 	return FALSE;
@@ -271,8 +265,8 @@ BOOL PMDOptionDialog::ComboBoneChanged(MQWidgetBase *sender, MQDocument doc)
 
 struct CreateDialogOptionParam
 {
-	ExportPMDPlugin *plugin;
-	PMDOptionDialog *dialog;
+	ExportGPBPlugin *plugin;
+	GPBOptionDialog *dialog;
 	MLanguage *lang;
 
 	bool visible_only;
@@ -292,7 +286,7 @@ static void CreateDialogOption(bool init, MQFileDialogCallbackParam *param, void
 
 	if(init)
 	{
-		PMDOptionDialog *dialog = new PMDOptionDialog(param->dialog_id, param->parent_frame_id, option->plugin, *option->lang);
+		GPBOptionDialog *dialog = new GPBOptionDialog(param->dialog_id, param->parent_frame_id, option->plugin, *option->lang);
 		option->dialog = dialog;
 
 		dialog->check_visible->SetChecked(option->visible_only);
@@ -386,20 +380,11 @@ struct PMDBoneParam {
 	std::vector<UINT> children;
 
 	int pmd_index;
-	int pmd_ik_index;
-	int pmd_ik_end_index;
-	int pmd_ik_tip;
-
-	std::vector<int> pmd_ik_chain;
 
 	MString name_jp;
 	MString name_en;
 	int root_group;
 	int group;
-	int ik_group;
-
-	UINT link_id;
-	int link_rate;
 
 	bool movable;
 	UINT group_id;
@@ -421,15 +406,8 @@ struct PMDBoneParam {
 		dummy = false;
 		twist = false;
 		pmd_index = -1;
-		pmd_ik_index = -1;
-		pmd_ik_end_index = -1;
-		pmd_ik_tip = -1;
 		root_group = -1;
 		group = -1;
-		ik_group = -1;
-		
-		link_id = 0;
-		link_rate = 0;
 
 		movable = false;
 		group_id = 0;
@@ -570,7 +548,7 @@ static bool containsTargetObject(std::vector<PMDMorphInputParam> &list, MQObject
 /// <param name="filename">書き出しファイル名</param>
 /// <param name="doc"></param>
 /// <returns></returns>
-BOOL ExportPMDPlugin::ExportFile(int index, const wchar_t *filename, MQDocument doc)
+BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument doc)
 {
 	std::wstring lang = GetSettingValue(MQSETTINGVALUE_LANGUAGE);
 #ifdef _WIN32
@@ -691,8 +669,8 @@ BOOL ExportPMDPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 			{
 				MQBoneManager::LINK_PARAM param;
 				bone_manager.GetLink(bone_id[i], param);
-				bone_param[i].link_id = param.link_bone_id;
-				bone_param[i].link_rate = (int)param.rotate;
+				//bone_param[i].link_id = param.link_bone_id;
+				//bone_param[i].link_rate = (int)param.rotate;
 			}
 			bone_manager.GetMovable(bone_id[i], bone_param[i].movable);
 			bone_manager.GetGroupID(bone_id[i], bone_param[i].group_id);
@@ -1329,13 +1307,6 @@ BOOL ExportPMDPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 				memcpy(bone_name, subname.c_str(), subname.length());
 				//fwrite(bone_name, 20, 1, fh);
 
-				if(bone_param[i].link_id != 0 && bone_param[i].link_rate != 100)
-					bone_group.push_back(-1);
-				else if(bone_param[i].group_id != 0)
-					bone_group.push_back(bone_param[i].group_id);
-				else
-					bone_group.push_back(-1);
-
 				WORD parent_bone_index = 0xFFFF;
 				if(bone_param[i].parent != 0){
 					auto parent_it = bone_id_index.find(bone_param[i].parent);
@@ -1377,10 +1348,6 @@ BOOL ExportPMDPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 				//   0:回転 1:回転と移動 2:IK 3:不明 4:IK影響下 5:回転影響下 6:IK接続先 7:非表示 8:捩れ 9:回転連動
 				BYTE bone_type = (bone_param[i].parent == 0) ? 1 : 0;
 				if(bone_param[i].tip_id == 0 && bone_param[i].child_num != 0) bone_type = 7;
-				else if(bone_param[i].link_id != 0){
-					if(bone_param[i].link_rate == 100) bone_type = 5;
-					else bone_type = 9;
-				}
 				else if(bone_param[i].child_num == 0) bone_type = 7;
 				if(bone_type <= 1){
 					bone_type = bone_param[i].movable ? 1 : 0;
@@ -1580,7 +1547,7 @@ BOOL ExportPMDPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 	return TRUE;
 }
 
-bool ExportPMDPlugin::LoadBoneSettingFile()
+bool ExportGPBPlugin::LoadBoneSettingFile()
 {
 #ifdef _WIN32
 	MString dir = MFileUtil::extractDirectory(s_DllPath);
@@ -1670,7 +1637,7 @@ bool ExportPMDPlugin::LoadBoneSettingFile()
 //---------------------------------------------------------------------------
 MQBasePlugin *GetPluginClass()
 {
-	static ExportPMDPlugin plugin;
+	static ExportGPBPlugin plugin;
 	return &plugin;
 }
 
