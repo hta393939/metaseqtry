@@ -50,6 +50,12 @@
 #define GL_LINES (0x0001)
 #define GL_UNSIGNED_SHORT (0x1403)
 
+enum {
+	STRUCT_SIMPLE = 0,
+	STRUCT_OBJECT = 1,
+	STRUCT_SKIN = 2,
+};
+
 #ifdef _WIN32
 HINSTANCE s_hInstance;
 wchar_t s_DllPath[MAX_PATH];
@@ -210,6 +216,13 @@ public:
 	BOOL ComboBoneChanged(MQWidgetBase *sender, MQDocument doc);
 };
 
+/// <summary>
+/// コンストラクタ
+/// </summary>
+/// <param name="id"></param>
+/// <param name="parent_frame_id"></param>
+/// <param name="plugin"></param>
+/// <param name="language"></param>
 GPBOptionDialog::GPBOptionDialog(int id, int parent_frame_id, ExportGPBPlugin *plugin, MLanguage& language) : MQDialog(id)
 {
 	MQFrame parent(parent_frame_id);
@@ -240,8 +253,9 @@ GPBOptionDialog::GPBOptionDialog(int id, int parent_frame_id, ExportGPBPlugin *p
 	hframe = CreateHorizontalFrame(group);
 	CreateLabel(hframe, language.Search("Facial"));
 	combo_facial = CreateComboBox(hframe);
-	combo_facial->AddItem(language.Search("Disable"));
-	combo_facial->AddItem(language.Search("Enable"));
+	combo_facial->AddItem(language.Search("Disable"), STRUCT_SIMPLE);
+	combo_facial->AddItem(language.Search("Enable"), STRUCT_OBJECT);
+	combo_facial->AddItem(language.Search("Enable"), STRUCT_SKIN);
 	combo_facial->SetHintSizeRateX(8);
 	combo_facial->SetFillBeforeRate(1);
 
@@ -280,6 +294,12 @@ struct CreateDialogOptionParam
 
 };
 
+/// <summary>
+/// オプションダイアログを生成する
+/// </summary>
+/// <param name="init"></param>
+/// <param name="param"></param>
+/// <param name="ptr"></param>
 static void CreateDialogOption(bool init, MQFileDialogCallbackParam *param, void *ptr)
 {
 	CreateDialogOptionParam *option = (CreateDialogOptionParam*)ptr;
@@ -294,8 +314,9 @@ static void CreateDialogOption(bool init, MQFileDialogCallbackParam *param, void
 		dialog->combo_bone->SetCurrentIndex(option->output_bone ? 1 : 0);
 		dialog->combo_ikend->SetEnabled(option->bone_exists && option->output_bone);
 		dialog->combo_ikend->SetCurrentIndex(option->output_ik_end ? 1 : 0);
-		dialog->combo_facial->SetEnabled(option->facial_exists);
-		dialog->combo_facial->SetCurrentIndex(option->output_facial ? 1 : 0);
+
+		dialog->combo_facial->SetCurrentIndex(0);
+
 		dialog->edit_modelname->SetText(MString::fromAnsiString(option->modelname).c_str());
 	}
 	else
@@ -310,11 +331,6 @@ static void CreateDialogOption(bool init, MQFileDialogCallbackParam *param, void
 	}
 }
 
-enum {
-	STRUCT_SIMPLE = 0,
-	STRUCT_OBJECT = 1,
-	STRUCT_SKIN = 2,
-};
 
 // @see Node.h#L58
 enum NodeType {
@@ -1590,24 +1606,6 @@ bool ExportGPBPlugin::LoadBoneSettingFile()
 				}
 
 				elem = elem->NextSiblingElement("bone");
-			}
-		}
-
-		const tinyxml2::XMLElement *ik_names = root->FirstChildElement("ik_names");
-		if(ik_names != NULL){
-			const tinyxml2::XMLElement *elem = ik_names->FirstChildElement("ik");
-			while(elem != NULL){
-				const char *bone = elem->Attribute("bone");
-				const char *ik = elem->Attribute("ik");
-				const char *end = elem->Attribute("end");
-
-				BoneIKNameSetting setting;
-				setting.bone = MString::fromUtf8String(bone);
-				setting.ik = MString::fromUtf8String(ik);
-				setting.ikend = MString::fromUtf8String(end);
-				m_BoneIKNameSetting.push_back(setting);
-
-				elem = elem->NextSiblingElement("ik");
 			}
 		}
 
