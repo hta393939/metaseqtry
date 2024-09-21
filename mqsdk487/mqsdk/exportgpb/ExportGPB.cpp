@@ -63,6 +63,8 @@ wchar_t s_DllPath[MAX_PATH];
 
 #define EPS	0.00001
 
+#define LARGEABS (800000000.0f)
+
 static bool	MQPointFuzzyEqual(MQPoint A, MQPoint B)
 {
 	return ((fabs(A.x - B.x) < EPS) && (fabs(A.y - B.y) < EPS) && (fabs(A.z - B.z) < EPS));
@@ -217,7 +219,7 @@ public:
 };
 
 /// <summary>
-/// コンストラクタ
+/// ダイアログ コンストラクタ
 /// </summary>
 /// <param name="id"></param>
 /// <param name="parent_frame_id"></param>
@@ -235,7 +237,7 @@ GPBOptionDialog::GPBOptionDialog(int id, int parent_frame_id, ExportGPBPlugin *p
 
 	hframe = CreateHorizontalFrame(group);
 	CreateLabel(hframe, language.Search("Bone"));
-	combo_bone = CreateComboBox(hframe);
+	this->combo_bone = CreateComboBox(hframe);
 	combo_bone->AddItem(language.Search("Disable"));
 	combo_bone->AddItem(language.Search("Enable"));
 	combo_bone->SetHintSizeRateX(8);
@@ -243,7 +245,7 @@ GPBOptionDialog::GPBOptionDialog(int id, int parent_frame_id, ExportGPBPlugin *p
 
 	hframe = CreateHorizontalFrame(group);
 	CreateLabel(hframe, language.Search("IKEnd"));
-	combo_ikend = CreateComboBox(hframe);
+	this->combo_ikend = CreateComboBox(hframe);
 	combo_ikend->AddItem(language.Search("Disable"));
 	combo_ikend->AddItem(language.Search("Enable"));
 	combo_ikend->SetHintSizeRateX(8);
@@ -252,7 +254,7 @@ GPBOptionDialog::GPBOptionDialog(int id, int parent_frame_id, ExportGPBPlugin *p
 	// モーフの出力可否のGUI作成
 	hframe = CreateHorizontalFrame(group);
 	CreateLabel(hframe, language.Search("Facial"));
-	combo_facial = CreateComboBox(hframe);
+	this->combo_facial = CreateComboBox(hframe);
 	combo_facial->AddItem(language.Search("Disable"), STRUCT_SIMPLE);
 	combo_facial->AddItem(language.Search("Enable"), STRUCT_OBJECT);
 	combo_facial->AddItem(language.Search("Enable"), STRUCT_SKIN);
@@ -261,7 +263,7 @@ GPBOptionDialog::GPBOptionDialog(int id, int parent_frame_id, ExportGPBPlugin *p
 
 	hframe = CreateHorizontalFrame(group);
 	CreateLabel(hframe, language.Search("ModelName"));
-	edit_modelname = CreateEdit(hframe); 
+	this->edit_modelname = CreateEdit(hframe); 
 	edit_modelname->SetMaxAnsiLength(20);
 	edit_modelname->SetHorzLayout(LAYOUT_FILL);
 
@@ -272,7 +274,7 @@ GPBOptionDialog::GPBOptionDialog(int id, int parent_frame_id, ExportGPBPlugin *p
 
 BOOL GPBOptionDialog::ComboBoneChanged(MQWidgetBase *sender, MQDocument doc)
 {
-	combo_ikend->SetEnabled(combo_bone->GetCurrentIndex() == 1);
+	this->combo_ikend->SetEnabled(combo_bone->GetCurrentIndex() == 1);
 	return FALSE;
 }
 
@@ -286,6 +288,7 @@ struct CreateDialogOptionParam
 	bool visible_only;
 	bool bone_exists;
 	bool facial_exists;
+	int struct_mode;
 	bool output_bone;
 	bool output_ik_end;
 	bool output_facial;
@@ -297,7 +300,7 @@ struct CreateDialogOptionParam
 /// <summary>
 /// オプションダイアログを生成する
 /// </summary>
-/// <param name="init"></param>
+/// <param name="init">true だと初期値で初期化する</param>
 /// <param name="param"></param>
 /// <param name="ptr"></param>
 static void CreateDialogOption(bool init, MQFileDialogCallbackParam *param, void *ptr)
@@ -345,6 +348,23 @@ enum AnimationAttr {
 };
 
 #pragma pack(push,1)
+
+struct GPBMaterial {
+	// 材質の元のインデックス。
+	int orgIndex;
+	// 面頂点
+	std::vector<int> faceIndices;
+
+	// 元々の名前
+	MString orgName;
+	// 変換後の名前
+	MString convName;
+
+	bool useTexture;
+	// .material に書く
+	MString orgDiffuseTexture;
+	MString convDiffuseTexture;
+};
 
 /// <summary>
 /// 一つのキーの時刻と値
@@ -439,12 +459,12 @@ struct GPBBounding {
 	float center[3];
 	float radius;
 	GPBBounding() {
-		min[0] = 99999.0f;
-		min[1] = 99999.0f;
-		min[2] = 99999.0f;
-		max[0] = -99999.0f;
-		max[1] = -99999.0f;
-		max[2] = -99999.0f;
+		min[0] = LARGEABS;
+		min[1] = LARGEABS;
+		min[2] = LARGEABS;
+		max[0] = -LARGEABS;
+		max[1] = -LARGEABS;
+		max[2] = -LARGEABS;
 		center[0] = 0.0f;
 		center[1] = 0.0f;
 		center[2] = 0.0f;
@@ -527,13 +547,13 @@ enum AttrType
 	ATTR_BLENDWEIGHTS = 6,
 	ATTR_BLENDINDICES = 7,
 	ATTR_TEXCOORD0 = 8,
-	ATTR_9,
-	ATTR_10,
-	ATTR_11,
-	ATTR_12,
-	ATTR_13,
-	ATTR_14,
-	ATTR_TEXCOORD7,
+	ATTR_TEXCOORD1 = 9,
+	ATTR_TEXCOORD2 = 10,
+	ATTR_TEXCOORD3 = 11,
+	ATTR_TEXCOORD4 = 12,
+	ATTR_TEXCOORD5 = 13,
+	ATTR_TEXCOORD6 = 14,
+	ATTR_TEXCOORD7 = 15,
 };
 
 struct PMDMorphInputParam
@@ -568,6 +588,7 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 {
 	std::wstring lang = GetSettingValue(MQSETTINGVALUE_LANGUAGE);
 #ifdef _WIN32
+	// DLLフォルダ
 	MString dir = MFileUtil::extractDirectory(s_DllPath);
 #else
 	MString dir = GetResourceDir();
@@ -580,6 +601,7 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 	LoadBoneSettingFile();
 
 	MQBoneManager bone_manager(this, doc);
+	std::vector<GPBMaterial> materials;
 
 	int indexMesh = 0;
 	int indexScene = 1;
@@ -719,6 +741,7 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 	option.output_bone = true;
 	option.output_ik_end = true;
 	option.output_facial = true;
+	option.struct_mode = STRUCT_SIMPLE;
 	// ファイル名だけ取り出して20文字に制限
 	option.modelname = getMultiBytesSubstring(MFileUtil::extractFileNameOnly(filename).toAnsiString(), 20);
 	option.comment = MAnsiString();
@@ -750,6 +773,14 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 		setting->Save("Facial", option.output_facial);
 		CloseSetting(setting);
 	}
+
+	//// 処理後半
+
+	// サブパスは取れる
+	//MString contentDir = MFileUtil::extractDirectory(filename);
+	MString materialPath = MFileUtil::changeExtension(filename, L".material");
+	MString hspPath = MFileUtil::changeExtension(filename, L".hsp");
+	MString csvPath = MFileUtil::changeExtension(filename, L".csv");
 
 
 	bool isOutputFacial = option.output_facial;
@@ -939,6 +970,79 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 		}
 	}
 
+	for (int m = 0; m <= numMat; ++m) {
+		GPBMaterial material;
+		material.orgIndex = m;
+
+		MQColor col(1, 1, 1);
+		float dif = 0.8f;
+		float alpha = 1.0f;
+		float spc_pow = 5.0f;
+		MQColor spc_col(0, 0, 0);
+		MQColor amb_col(0.6f, 0.6f, 0.6f);
+		MString texture;
+
+		if (m < numMat) {
+			MQMaterial mat = doc->GetMaterial(m);
+			if (mat != NULL) {
+				material.orgName = mat->GetNameW();
+
+				col = mat->GetColor();
+				dif = mat->GetDiffuse();
+				alpha = mat->GetAlpha();
+				spc_pow = mat->GetPower();
+				spc_col = mat->GetSpecularColor();
+				amb_col = mat->GetAmbientColor();
+				wchar_t path[_MAX_PATH];
+				mat->GetTextureNameW(path, _MAX_PATH);
+				// foo.png だけ取り出す
+				texture = MFileUtil::extractFilenameAndExtension(MString(path));
+				material.useTexture = true;
+
+				/*
+				int shader = mat->GetShader();
+				if (shader == MQMATERIAL_SHADER_HLSL) {
+					MAnsiString shader_name = mat->GetShaderName();
+					if (shader_name == "pmd") {
+						//toon = mat->GetShaderParameterIntValue("Toon", 0);
+						//edge = mat->GetShaderParameterBoolValue("Edge", 0);
+					}
+				}
+				*/
+			}
+		}
+
+		float diffuse_color[3]; // dr, dg, db // 減衰色
+		diffuse_color[0] = col.r * dif;
+		diffuse_color[1] = col.g * dif;
+		diffuse_color[2] = col.b * dif;
+
+		float specular_color[3]; // sr, sg, sb // 光沢色
+		specular_color[0] = sqrtf(spc_col.r);
+		specular_color[1] = sqrtf(spc_col.g);
+		specular_color[2] = sqrtf(spc_col.b);
+
+		float ambient_color[3]; // mr, mg, mb // 環境色(ambient)
+		ambient_color[0] = amb_col.r;
+		ambient_color[1] = amb_col.g;
+		ambient_color[2] = amb_col.b;
+
+		//DWORD face_vert_count = material_used[i] * 3;
+
+		//MAnsiString texture_str = getMultiBytesSubstring(texture, 20);
+		//char texture_file_name[20];
+		//memcpy(texture_file_name, texture_str.c_str(), texture_str.length());
+		//fwrite(texture_file_name, 20, 1, fh);
+
+		// TODO: 
+		material.orgDiffuseTexture = texture;
+
+		material.convName = material.orgName;
+		material.convDiffuseTexture = material.orgDiffuseTexture;
+
+		materials.push_back(material);
+	}
+
 	// Face's vertices list 面頂点リストを生成する
 	DWORD face_vert_count = 0;
 	std::vector<int> material_used(numMat + 1, 0);
@@ -963,6 +1067,7 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 		}
 	}
 
+
 	std::vector<int> faceVertexIndices;
 
 	int output_face_vert_count = 0;
@@ -984,11 +1089,13 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 
 			int num_face = obj->GetFaceCount();
 			for (int fi = 0; fi < num_face; fi++) {
+				// 面の材質(インデックス)を取得する
 				int mi = obj->GetFaceMaterial(fi);
+				// 存在する材質でない場合は，特別材質扱いとする
 				if (mi < 0 || mi >= numMat) mi = numMat;
 
 				int n = eobj->GetFacePointCount(fi);
-				if (n >= 3 && mi == m) {
+				if (n >= 3 && mi == m) { // 面であって今回のループに該当する材質だった場合のみ
 					std::vector<int> vi(n);
 					std::vector<MQPoint> p(n);
 
@@ -1009,6 +1116,10 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 						faceVertexIndices.push_back(tvi[1]);
 						faceVertexIndices.push_back(tvi[2]);
 
+						materials[mi].faceIndices.push_back(tvi[0]);
+						materials[mi].faceIndices.push_back(tvi[1]);
+						materials[mi].faceIndices.push_back(tvi[2]);
+
 						output_face_vert_count += 3;
 					}
 				}
@@ -1016,8 +1127,6 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 		}
 	}
 	assert(face_vert_count == output_face_vert_count);
-
-
 
 
 	//// Open a file.
@@ -1031,25 +1140,23 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 		return FALSE;
 	}
 
-	const wchar_t * filenameMaterial;
 	FILE* fhMaterial = nullptr;
-	/*
-	err = _wfopen_s(&fhMaterial, filenameMaterial, L"w");
+	err = _wfopen_s(&fhMaterial, materialPath.c_str(), L"w");
 	if (err != 0) {
-		for (size_t i = 0; i < expobjs.size(); i++) {
-			delete expobjs[i];
-		}
-		return FALSE;
-	} */
+		fhMaterial = nullptr;
+	}
 
-	const wchar_t* filenameHSP;
 	FILE* fhHSP = nullptr;
-	/*
-	*/
+	err = _wfopen_s(&fhHSP, hspPath.c_str(), L"w");
+	if (err != 0) {
+		fhHSP = nullptr;
+	}
 
-	const wchar_t* filenameInAnim;
 	FILE* fhInAnim = nullptr;
-	/**/
+	err = _wfopen_s(&fhInAnim, csvPath.c_str(), L"r");
+	if (err != 0) {
+		fhInAnim = nullptr;
+	}
 
 
 	//// Headerの書き出し
@@ -1213,95 +1320,24 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 		fwrite(&bounding.radius, sizeof(float), 1, fh);
 
 		// Part
-		DWORD partNum = 1;
+		DWORD partNum = materials.size();
 		fwrite(&partNum, sizeof(DWORD), 1, fh);
-		for (int j = 0; j < partNum; ++j) {
+		for (const auto& material : materials) {
 			DWORD type = GL_TRIANGLE; // TRI or LINE
 			DWORD format = GL_UNSIGNED_SHORT; // u16 or u32
-			DWORD byteNum = faceVertexIndices.size() * sizeof(unsigned short);
+			DWORD byteNum = material.faceIndices.size() * sizeof(unsigned short);
 			fwrite(&type, sizeof(DWORD), 1, fh);
 			fwrite(&format, sizeof(DWORD), 1, fh);
 			fwrite(&byteNum, sizeof(DWORD), 1, fh);
 			// NOTE: 面頂点
-			for (const auto& index : faceVertexIndices) {
+			for (const auto& index : material.faceIndices) {
 				unsigned short index16 = static_cast<unsigned short>(index);
 				fwrite(&index16, sizeof(unsigned short), 1, fh);
 			}
 		}
 	}
 
-
-
-	// Matrial list
-	DWORD used_mat_num = 0;
-	for(int i=0; i<=numMat; i++){
-		if(material_used[i] > 0) used_mat_num++;
-	}
-	//fwrite(&used_mat_num, 4, 1, fh);
-	for(int i=0; i<=numMat; i++){
-		if(material_used[i] == 0) continue;
-
-		MQColor col(1,1,1);
-		float dif = 0.8f;
-		float alpha = 1.0f;
-		float spc_pow = 5.0f;
-		MQColor spc_col(0,0,0);
-		MQColor amb_col(0.6f,0.6f,0.6f);
-		MAnsiString texture;
-
-		if(i < numMat){
-			MQMaterial mat = doc->GetMaterial(i);
-			if(mat != NULL){
-				col = mat->GetColor();
-				dif = mat->GetDiffuse();
-				alpha = mat->GetAlpha();
-				spc_pow = mat->GetPower();
-				spc_col = mat->GetSpecularColor();
-				amb_col = mat->GetAmbientColor();
-				wchar_t path[_MAX_PATH];
-				mat->GetTextureNameW(path, _MAX_PATH);
-				texture = MFileUtil::extractFilenameAndExtension(MString(path)).toAnsiString();
-
-				int shader = mat->GetShader();
-				if(shader == MQMATERIAL_SHADER_HLSL){
-					MAnsiString shader_name = mat->GetShaderName();
-					if(shader_name == "pmd"){
-						//toon = mat->GetShaderParameterIntValue("Toon", 0);
-						//edge = mat->GetShaderParameterBoolValue("Edge", 0);
-					}
-				}
-			}
-		}
-
-		float diffuse_color[3]; // dr, dg, db // 減衰色
-		diffuse_color[0] = col.r * dif;
-		diffuse_color[1] = col.g * dif;
-		diffuse_color[2] = col.b * dif;
-		//fwrite(diffuse_color, 4, 3, fh);
-		//fwrite(&alpha, 4, 1, fh);
-		//fwrite(&spc_pow, 4, 1, fh);
-
-		float specular_color[3]; // sr, sg, sb // 光沢色
-		specular_color[0] = sqrtf(spc_col.r);
-		specular_color[1] = sqrtf(spc_col.g);
-		specular_color[2] = sqrtf(spc_col.b);
-		//fwrite(&specular_color, 4, 3, fh);
-
-		float ambient_color[3]; // mr, mg, mb // 環境色(ambient)
-		ambient_color[0] = amb_col.r;
-		ambient_color[1] = amb_col.g;
-		ambient_color[2] = amb_col.b;
-		//fwrite(&ambient_color, 4, 3, fh);
-
-		DWORD face_vert_count = material_used[i] * 3;
-		//fwrite(&face_vert_count, 4, 1, fh);
-
-		MAnsiString texture_str = getMultiBytesSubstring(texture, 20);
-		char texture_file_name[20]; // The end null is unnecessary.
-		memset(texture_file_name, 0, 20);
-		memcpy(texture_file_name, texture_str.c_str(), texture_str.length());
-		//fwrite(texture_file_name, 20, 1, fh);
-	}
+#if 0
 	std::vector<int>bone_group;
 	// Bone list
 	if(bone_num == 0){
@@ -1386,14 +1422,35 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 				//memcpy(bone_name, subname.c_str(), subname.length());
 
 		//MAnsiString n = MAnsiString::format("toon%02d.bmp", i+1);
-
+#endif
 
 	//// 材質の書き出し
 	if (fhMaterial) {
-		fprintf_s(fhMaterial, "material mat1 : colored\r\n");
+		fprintf_s(fhMaterial, "material colored\r\n");
 		fprintf_s(fhMaterial, "{\r\n");
 		fprintf_s(fhMaterial, "}\r\n");
+		fprintf_s(fhMaterial, "material textured\r\n");
+		fprintf_s(fhMaterial, "{\r\n");
+		fprintf_s(fhMaterial, "}\r\n");
+		for (const auto& material : materials) {
+			const auto name = material.convName.toAnsiString();
+			fprintf_s(fhMaterial, "material %s : ", name.c_str());
+			if (material.useTexture) {
+				fprintf_s(fhMaterial, "textured\r\n");
+			}
+			else {
+				fprintf_s(fhMaterial, "colored\r\n");
+			}
+			fprintf_s(fhMaterial, "{\r\n");
+			fprintf_s(fhMaterial, "}\r\n");
+		}
 	}
+	if (fhHSP) {
+		fprintf_s(fhHSP, "gpsetanim \r\n");
+		fprintf_s(fhHSP, "\r\n");
+		fprintf_s(fhHSP, "\r\n");
+	}
+
 
 
 	DWORD elementNum = 2;
