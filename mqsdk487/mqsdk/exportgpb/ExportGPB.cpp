@@ -144,8 +144,8 @@ struct GPBMaterial {
 	MString orgDiffuseTexture;
 	MString convDiffuseTexture;
 
-	// RGB
-	float diffuse[3];
+	// RGBA
+	float diffuse[4];
 
 	GPBMaterial() {
 		enable = true;
@@ -154,6 +154,7 @@ struct GPBMaterial {
 		diffuse[0] = 1.0f;
 		diffuse[1] = 1.0f;
 		diffuse[2] = 1.0f;
+		diffuse[3] = 1.0f;
 	}
 };
 
@@ -1056,13 +1057,11 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 			material.convName = material.orgName;
 		}
 
-		float diffuse_color[3]; // dr, dg, db // 減衰色
-		diffuse_color[0] = col.r * dif;
-		diffuse_color[1] = col.g * dif;
-		diffuse_color[2] = col.b * dif;
-		material.diffuse[0] = diffuse_color[0];
-		material.diffuse[1] = diffuse_color[1];
-		material.diffuse[2] = diffuse_color[2];
+		// dr, dg, db // 減衰色
+		material.diffuse[0] = col.r * dif;
+		material.diffuse[1] = col.g * dif;
+		material.diffuse[2] = col.b * dif;
+		material.diffuse[3] = alpha;
 
 		float specular_color[3]; // sr, sg, sb // 光沢色
 		specular_color[0] = sqrtf(spc_col.r);
@@ -1166,9 +1165,14 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 						faceVertexIndices.push_back(tvi[1]);
 						faceVertexIndices.push_back(tvi[2]);
 
+						// 元の順
+						//materials[mi].faceIndices.push_back(tvi[0]);
+						//materials[mi].faceIndices.push_back(tvi[1]);
+						//materials[mi].faceIndices.push_back(tvi[2]);
+
 						materials[mi].faceIndices.push_back(tvi[0]);
-						materials[mi].faceIndices.push_back(tvi[1]);
 						materials[mi].faceIndices.push_back(tvi[2]);
+						materials[mi].faceIndices.push_back(tvi[1]);
 
 						output_face_vert_count += 3;
 					}
@@ -1784,6 +1788,10 @@ material textured\n\
 ");
 
 	for (const auto& material : materials) {
+		if (!material.enable) {
+			continue;
+		}
+
 		const auto name = material.convName.toAnsiString();
 		FMES(f, "material %s : ", name.c_str());
 		if (material.useTexture) {
@@ -1802,9 +1810,9 @@ material textured\n\
 		else {
 			FMES(f, "colored\n\
 {\n\
-	u_diffuseColor = %.6f, %.6f, %.6f\n\
+	u_diffuseColor = %.6f, %.6f, %.6f, %.6f\n\
 }\n\
-", material.diffuse[0], material.diffuse[1], material.diffuse[2]);
+", material.diffuse[0], material.diffuse[1], material.diffuse[2], material.diffuse[3]);
 		}
 
 	}
@@ -1817,6 +1825,8 @@ int ExportGPBPlugin::makeHSP(FILE* f) {
 // .hsp は res フォルダの一つ上に配置しないといけない
 	FMES(f, "\
 #include \"hgimg4.as\"\n\
+ddim vals, 6\n\
+vals(0) = %.6f, %.6f, %.6f, 1.0, 1.0, 1.0\n\
 gpload id, \"res/%s\"\n\
 //gpaddanim id, \"whole\", 0, -1, 0\n\
 //gpact id, \"whole\", GPACT_PLAY\n\
@@ -1826,11 +1836,13 @@ repeat\n\
   redraw 0\n\
   gpdraw\n\
   pos 8, 8\n\
-  mes \"%s\"\n\
+  mes \"%s\" + vals(0)\n\
   redraw 1\n\
   await 1000 / 60\n\
 loop\n\
-", "try01", IDENVER);
+",
+		1.23f, 2.0f, 3.0f,
+		"try01", IDENVER);
 	return 0;
 }
 
