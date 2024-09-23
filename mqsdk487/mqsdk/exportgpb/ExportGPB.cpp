@@ -1,9 +1,5 @@
 ﻿//---------------------------------------------------------------------------
-//          Copyright(C) 1999-2024, tetraface Inc.
-//
-//     Sample for MQBoneManager.
-//     Created DLL must be installed in "Plugins\Export" directory.
-//    　MQBoneManagerのためのサンプル。
+// このコードは ExportPMD.cpp をベースに実装されています。
 //    　作成したDLLは"Plugins\Export"フォルダに入れる必要がある。
 // https://github.com/gameplay3d/gameplay/blob/master/gameplay/src/Bundle.cpp
 //---------------------------------------------------------------------------
@@ -14,7 +10,7 @@
 #define MY_FILETYPE "HSP GPB simple(*.gpb)"
 #define MY_EXT "gpb"
 
-#define IDENVER "0.1.0"
+#define IDENVER "0.1.1"
 
 // $(ProjectDir)$(Platform)\$(Configuration)\
 // $(OutDir)$(TargetName)$(TargetExt)
@@ -124,6 +120,24 @@ static MString GetResourceDir()
 }
 #endif
 
+struct GPBBounding {
+	float min[3];
+	float max[3];
+	float center[3];
+	float radius;
+	GPBBounding() {
+		min[0] = LARGEABS;
+		min[1] = LARGEABS;
+		min[2] = LARGEABS;
+		max[0] = -LARGEABS;
+		max[1] = -LARGEABS;
+		max[2] = -LARGEABS;
+		center[0] = 0.0f;
+		center[1] = 0.0f;
+		center[2] = 0.0f;
+		radius = 0.0f;
+	}
+};
 
 struct GPBMaterial {
 	// 有効かどうか
@@ -144,12 +158,15 @@ struct GPBMaterial {
 	MString orgDiffuseTexture;
 	MString convDiffuseTexture;
 
+	BOOL isDouble;
+
 	// RGBA
 	float diffuse[4];
 
 	GPBMaterial() {
 		enable = true;
 		orgIndex = -1;
+		isDouble = FALSE;
 		useTexture = false;
 		diffuse[0] = 1.0f;
 		diffuse[1] = 1.0f;
@@ -203,7 +220,7 @@ private:
 
 	int makeMaterial(FILE* fhMaterial, const std::vector<GPBMaterial>& materials);
 	// 
-	int makeHSP(FILE* f);
+	int makeHSP(FILE* f, const GPBBounding& bounding);
 };
 
 
@@ -335,8 +352,7 @@ struct CreateDialogOptionParam
 	bool facial_exists;
 	int struct_mode;
 	bool output_bone;
-	bool output_ik_end;
-	bool output_facial;
+	bool output_hsp;
 	//MAnsiString modelname;
 	MAnsiString comment;
 
@@ -484,27 +500,6 @@ struct PMDBoneParam {
 	}
 };
 
-
-
-struct GPBBounding {
-	float min[3];
-	float max[3];
-	float center[3];
-	float radius;
-	GPBBounding() {
-		min[0] = LARGEABS;
-		min[1] = LARGEABS;
-		min[2] = LARGEABS;
-		max[0] = -LARGEABS;
-		max[1] = -LARGEABS;
-		max[2] = -LARGEABS;
-		center[0] = 0.0f;
-		center[1] = 0.0f;
-		center[2] = 0.0f;
-		radius = 0.0f;
-	}
-};
-
 /// <summary>
 /// 参照テーブル構造体
 /// </summary>
@@ -611,6 +606,19 @@ static bool containsTargetObject(std::vector<PMDMorphInputParam> &list, MQObject
 }
 
 /// <summary>
+/// 最大と最小から中心と半径を計算する
+/// </summary>
+/// <param name="bounding"></param>
+static void calcRadius(GPBBounding& bounding) {
+	float half[3];
+	for (int j = 0; j < 3; ++j) {
+		bounding.center[j] = (bounding.min[j] + bounding.max[j]) * 0.5;
+		half[j] = bounding.max[j] - bounding.center[j];
+	}
+	bounding.radius = sqrtf(half[0] * half[0] + half[1] * half[1] + half[2] * half[2]);
+}
+
+/// <summary>
 /// バイナリファイルを書き出す
 /// </summary>
 /// <param name="index"></param>
@@ -626,7 +634,8 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 #else
 	MString dir = GetResourceDir();
 #endif
-	MString path = MFileUtil::combinePath(dir, L"ExportGPB.resource.xml");
+	//MString path = MFileUtil::combinePath(dir, L"ExportGPB.resource.xml");
+	MString path = MFileUtil::combinePath(dir, L"exportgpb.resource.xml");
 	MLanguage language;
 	language.Load(lang, path.c_str());
 
@@ -773,8 +782,7 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 	option.visible_only = false;
 	option.bone_exists = (bone_num > 0);
 	option.output_bone = true;
-	option.output_ik_end = true;
-	option.output_facial = true;
+	option.output_hsp = false;
 	option.struct_mode = STRUCT_SIMPLE;
 	// ファイル名だけ取り出して20文字に制限
 	//option.modelname = getMultiBytesSubstring(MFileUtil::extractFileNameOnly(filename).toAnsiString(), 20);
@@ -783,7 +791,7 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 	MQSetting *setting = OpenSetting();
 	if(setting != NULL){
 		setting->Load("VisibleOnly", option.visible_only, option.visible_only);
-		//setting->Load("Bone", option.output_bone, option.output_bone);
+		setting->Load("OutputHsp", option.output_hsp, option.output_hsp);
 	}
 	MQFileDialogInfo dlginfo;
 	memset(&dlginfo, 0, sizeof(dlginfo));
@@ -793,6 +801,7 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 	//dlginfo.hidden_flag = MQFileDialogInfo::HIDDEN_AXIS | MQFileDialogInfo::HIDDEN_INVERT_FACE;
 	dlginfo.axis_x = MQFILE_TYPE_RIGHT;
 	dlginfo.axis_y = MQFILE_TYPE_UP;
+	// PMD では FRONT 指定してあった
 	dlginfo.axis_z = MQFILE_TYPE_BACK;
 	dlginfo.softname = "";
 	dlginfo.dialog_callback = CreateDialogOption;
@@ -821,8 +830,6 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 	//MString hspPath = MFileUtil::extractDirectory(filename) + onlyName + L".hsp";
 	MString hspPath = MFileUtil::extractDirectory(contentDir.substring(0, contentDir.length() - 1)) + onlyName + L".hsp";
 
-
-	bool isOutputFacial = option.output_facial;
 	
 	int numObj = doc->GetObjectCount();
 	int numMat = doc->GetMaterialCount();
@@ -1013,6 +1020,7 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 		GPBMaterial material;
 		material.orgIndex = m;
 
+		BOOL isDouble = FALSE;
 		MQColor col(1, 1, 1);
 		float dif = 0.8f;
 		float alpha = 1.0f;
@@ -1025,6 +1033,8 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 			MQMaterial mat = doc->GetMaterial(m);
 			if (mat != NULL) {
 				material.orgName = mat->GetNameW();
+
+				isDouble = mat->GetDoubleSided();
 
 				col = mat->GetColor();
 				dif = mat->GetDiffuse();
@@ -1063,6 +1073,8 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 		material.diffuse[2] = col.b * dif;
 		material.diffuse[3] = alpha;
 
+		material.isDouble = isDouble;
+
 		float specular_color[3]; // sr, sg, sb // 光沢色
 		specular_color[0] = sqrtf(spc_col.r);
 		specular_color[1] = sqrtf(spc_col.g);
@@ -1084,7 +1096,9 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 		material.orgDiffuseTexture = texture;
 
 		material.convName = material.orgName;
-		material.convDiffuseTexture = material.orgDiffuseTexture;
+		if (material.useTexture) {
+			material.convDiffuseTexture = MString(L"res/") + material.orgDiffuseTexture;
+		}
 
 		materials.push_back(material);
 	}
@@ -1210,13 +1224,14 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 	// debug
 	//FMES(fhMaterial, hspPath.toAnsiString().c_str());
 
-#if 1
 	FILE* fhHSP = nullptr;
-	err = _wfopen_s(&fhHSP, hspPath.c_str(), L"w");
-	if (err != 0) {
-		fhHSP = nullptr;
+	if (option.output_hsp) {
+		err = _wfopen_s(&fhHSP, hspPath.c_str(), L"w");
+		if (err != 0) {
+			fhHSP = nullptr;
+		}
 	}
-#endif
+
 #if 0
 	FILE* fhInAnim = nullptr;
 	err = _wfopen_s(&fhInAnim, csvPath.c_str(), L"r");
@@ -1255,6 +1270,8 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 	}
 
 	//// メッシュ
+	GPBBounding wholeBounding;
+
 	DWORD meshNum = 1;
 	fwrite(&meshNum, sizeof(DWORD), 1, fh);
 	for (int i = 0; i < meshNum; i++)
@@ -1299,9 +1316,14 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 			nrm[0] = vert_normal[j].x;
 			nrm[1] = vert_normal[j].y;
 			nrm[2] = vert_normal[j].z;
+			// 元の順
+			//uv[0] = vert_coord[j].u;
+			//uv[1] = vert_coord[j].v;
 
+			// gpb は多分 v 反転
 			uv[0] = vert_coord[j].u;
-			uv[1] = vert_coord[j].v;
+			uv[1] = 1.0f - vert_coord[j].v;
+
 
 			UINT vert_bone_id[16];
 			float weights[16];
@@ -1373,12 +1395,7 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 			fwrite(&indices, sizeof(float), 4, fh);
 		}
 
-		float half[3];
-		for (int j = 0; j < 3; ++j) {
-			bounding.center[j] = (bounding.min[j] + bounding.max[j]) * 0.5;
-			half[j] = bounding.max[j] - bounding.center[j];
-		}
-		bounding.radius = sqrtf(half[0] * half[0] + half[1] * half[1] + half[2] * half[2]);
+		calcRadius(bounding);
 
 		fwrite(&bounding.min, sizeof(float), 3, fh);
 		fwrite(&bounding.max, sizeof(float), 3, fh);
@@ -1402,7 +1419,15 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 				fwrite(&index16, sizeof(unsigned short), 1, fh);
 			}
 		}
+
+		for (int j = 0; j < 3; ++j) {
+			wholeBounding.max[j] = fmaxf(wholeBounding.max[j], bounding.max[j]);
+			wholeBounding.min[j] = fminf(wholeBounding.min[j], bounding.min[j]);
+		}
 	}
+
+	calcRadius(wholeBounding);
+
 
 #if 0
 	std::vector<int>bone_group;
@@ -1495,11 +1520,9 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 	if (fhMaterial) {
 		this->makeMaterial(fhMaterial, materials);
 	}
-#if 1
 	if (fhHSP) {
-		this->makeHSP(fhHSP);
+		this->makeHSP(fhHSP, wholeBounding);
 	}
-#endif
 
 	DWORD elementNum = 2;
 	fwrite(&elementNum, sizeof(DWORD), 1, fh);
@@ -1650,16 +1673,13 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 		delete expobjs[i];
 	}
 
-	OutputDebugString(L"ExportGPB");
-
 	if (fhMaterial) {
 		err = fclose(fhMaterial);
 	}
-#if 1
 	if (fhHSP) {
 		err = fclose(fhHSP);
 	}
-#endif
+
 #if 0
 	if (fhInAnim) {
 		err = fclose(fhInAnim);
@@ -1744,16 +1764,10 @@ int ExportGPBPlugin::makeMaterial(FILE* f, const std::vector<GPBMaterial>& mater
 material colored\n\
 {\n\
 	u_worldViewProjectionMatrix = WORLD_VIEW_PROJECTION_MATRIX\n\
-	renderState\n\
-	{\n\
-		cullFace = true\n\
-		depthTest = true\n\
-	}\n\
 	technique\n\
 	{\n\
 		pass\n\
 		{\n\
-			defines = DIRECTIONAL_LIGHT_COUNT 1\n\
 			vertexShader = res/shaders/colored.vert\n\
 			fragmentShader = res/shaders/colored.frag\n\
 		}\n\
@@ -1770,16 +1784,10 @@ material textured\n\
 		minFilter = LINEAR_MIPMAP_LINEAR\n\
 		magFilter = LINEAR\n\
 	}\n\
-	renderState\n\
-	{\n\
-		cullFace = true\n\
-		depthTest = true\n\
-	}\n\
 	technique\n\
 	{\n\
 		pass\n\
 		{\n\
-			defines = DIRECTIONAL_LIGHT_COUNT 1\n\
 			vertexShader = res/shaders/textured.vert\n\
 			fragmentShader = res/shaders/textured.frag\n\
 		}\n\
@@ -1804,44 +1812,54 @@ material textured\n\
 		wrapS = REPEAT\n\
 		wrapT = REPEAT\n\
 	}\n\
-}\n\
 ", material.convDiffuseTexture.toAnsiString().c_str());
+
 		}
 		else {
 			FMES(f, "colored\n\
 {\n\
 	u_diffuseColor = %.6f, %.6f, %.6f, %.6f\n\
-}\n\
 ", material.diffuse[0], material.diffuse[1], material.diffuse[2], material.diffuse[3]);
 		}
 
+		FMES(f, "\
+	renderState\n\
+	{\n\
+		cullFace = %s\n\
+		depthTest = true\n\
+	}\n\
+", material.isDouble ? "false" : "true");
+
+		FMES(f, "}\n");
 	}
 
 	return 0;
 }
 
 
-int ExportGPBPlugin::makeHSP(FILE* f) {
 // .hsp は res フォルダの一つ上に配置しないといけない
+int ExportGPBPlugin::makeHSP(FILE* f, const GPBBounding& bounding) {
+	float fov = 45.0f * 3.141592f * 2.0f / 180.0f;
+	float dist = bounding.radius / tanf(fov * 0.5f) + bounding.radius;
 	FMES(f, "\
 #include \"hgimg4.as\"\n\
-ddim vals, 6\n\
-vals(0) = %.6f, %.6f, %.6f, 1.0, 1.0, 1.0\n\
+ddim vals, 4\n\
+vals(0) = %.6f, %.6f, %.6f, %.6f\n\
 gpload id, \"res/%s\"\n\
 //gpaddanim id, \"whole\", 0, -1, 0\n\
 //gpact id, \"whole\", GPACT_PLAY\n\
-setpos GPOBJ_CAMERA, 1, 1, 10\n\
-gplookat GPOBJ_CAMERA, 0, 0, 0\n\
+setpos GPOBJ_CAMERA, vals(0), vals(1), vals(2) + vals(3)\n\
+gplookat GPOBJ_CAMERA, vals(0), vals(1), vals(2)\n\
 repeat\n\
   redraw 0\n\
   gpdraw\n\
   pos 8, 8\n\
-  mes \"%s\" + vals(0)\n\
+  mes \"%s, \" + dist\n\
   redraw 1\n\
   await 1000 / 60\n\
 loop\n\
 ",
-		1.23f, 2.0f, 3.0f,
+		bounding.center[0], bounding.center[1], bounding.center[2], dist,
 		"try01", IDENVER);
 	return 0;
 }
