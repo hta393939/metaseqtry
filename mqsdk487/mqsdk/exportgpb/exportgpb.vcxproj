@@ -226,6 +226,9 @@
     <Xml Include="exportgpb.resource.xml" />
     <Xml Include="ExportGPBBoneSetting.xml" />
   </ItemGroup>
+  <ItemGroup>
+    <Text Include="exportgpb.txt" />
+  </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
   </ImportGroup>

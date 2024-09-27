@@ -53,6 +53,13 @@ enum {
 	STRUCT_SKIN = 2,
 };
 
+enum {
+	MTLFILE_NO = 0,
+	MTLFILE_FORCE = 1,
+	MTLFILE_CONFIRM = 2,
+	MTLFILE_FORBIDDEN = 3,
+};
+
 #ifdef _WIN32
 HINSTANCE s_hInstance;
 wchar_t s_DllPath[MAX_PATH];
@@ -63,6 +70,8 @@ wchar_t s_DllPath[MAX_PATH];
 #define LARGEABS (800000000.0f)
 
 #define FMES fprintf_s
+
+#define JOINTNAME "n0_Joint"
 
 static bool	MQPointFuzzyEqual(MQPoint A, MQPoint B)
 {
@@ -271,9 +280,15 @@ public:
 	//MQEdit *edit_modelname;
 	//MQMemo *memo_comment;
 
+	MQComboBox* combo_mtlfile;
+
+	MQCheckBox* experimental;
+	MQCheckBox* output_hsp;
+
 	GPBOptionDialog(int id, int parent_frame_id, ExportGPBPlugin *plugin, MLanguage& language);
 
 	BOOL ComboBoneChanged(MQWidgetBase *sender, MQDocument doc);
+	//BOOL ComboExperimentalChanged(MQWidgetBase* sender, MQDocument doc);
 };
 
 /// <summary>
@@ -292,6 +307,20 @@ GPBOptionDialog::GPBOptionDialog(int id, int parent_frame_id, ExportGPBPlugin *p
 	MQFrame *hframe;
 
 	check_visible = CreateCheckBox(group, language.Search("VisibleOnly"));
+
+	hframe = CreateHorizontalFrame(group);
+	CreateLabel(hframe, language.Search("MtlFile"));
+	this->combo_mtlfile = CreateComboBox(hframe);
+	combo_mtlfile->AddItem(language.Search("MtlFileNo"));
+	combo_mtlfile->AddItem(language.Search("MtlFileForce"));
+	combo_mtlfile->AddItem(language.Search("MtlFileConfirm"));
+	combo_mtlfile->AddItem(language.Search("MtlFileForbidden"));
+	combo_mtlfile->SetHintSizeRateX(8);
+	combo_mtlfile->SetFillBeforeRate(1);
+
+	experimental = CreateCheckBox(group, language.Search("Experimental"));
+	output_hsp = CreateCheckBox(group, language.Search("OutputHsp"));
+
 
 #if 0
 	hframe = CreateHorizontalFrame(group);
@@ -340,6 +369,14 @@ BOOL GPBOptionDialog::ComboBoneChanged(MQWidgetBase *sender, MQDocument doc)
 	return FALSE;
 }
 
+#if 0
+BOOL GPBOptionDialog::ComboExperimentalChanged(MQWidgetBase* sender, MQDocument doc)
+{
+	this->output_hsp->SetEnabled(this->experimental->GetChecked());
+	return FALSE;
+}
+#endif
+
 
 struct CreateDialogOptionParam
 {
@@ -348,10 +385,14 @@ struct CreateDialogOptionParam
 	MLanguage *lang;
 
 	bool visible_only;
+
 	bool bone_exists;
 	bool facial_exists;
 	int struct_mode;
 	bool output_bone;
+
+	int mtlfile;
+	bool experimental;
 	bool output_hsp;
 	//MAnsiString modelname;
 	MAnsiString comment;
@@ -361,7 +402,7 @@ struct CreateDialogOptionParam
 /// <summary>
 /// オプションダイアログを生成する
 /// </summary>
-/// <param name="init">true だと初期値で初期化する</param>
+/// <param name="init">true だと初期値で初期化する。false だと option に値を書き出す</param>
 /// <param name="param"></param>
 /// <param name="ptr"></param>
 static void CreateDialogOption(bool init, MQFileDialogCallbackParam *param, void *ptr)
@@ -375,6 +416,13 @@ static void CreateDialogOption(bool init, MQFileDialogCallbackParam *param, void
 
 		dialog->check_visible->SetChecked(option->visible_only);
 
+		dialog->combo_mtlfile->SetEnabled(true);
+		dialog->combo_mtlfile->SetCurrentIndex(option->mtlfile);
+
+		dialog->experimental->SetChecked(option->experimental);
+
+		dialog->output_hsp->SetEnabled(option->experimental);
+		dialog->output_hsp->SetChecked(option->output_hsp);
 #if 0
 		dialog->combo_bone->SetEnabled(option->bone_exists);
 		dialog->combo_bone->SetCurrentIndex(option->output_bone ? 1 : 0);
@@ -389,9 +437,12 @@ static void CreateDialogOption(bool init, MQFileDialogCallbackParam *param, void
 	else
 	{
 		option->visible_only = option->dialog->check_visible->GetChecked();
+
+		option->mtlfile = option->dialog->combo_mtlfile->GetCurrentIndex();
+		option->experimental = option->dialog->experimental->GetChecked();
+
+		option->output_hsp = option->dialog->output_hsp->GetChecked();
 #if 0
-		option->output_bone = option->dialog->combo_bone->GetCurrentIndex() == 1;
-		option->output_ik_end = option->dialog->combo_ikend->GetCurrentIndex() == 1;
 		option->output_facial = option->dialog->combo_facial->GetCurrentIndex() == 1;
 		//option->modelname = getMultiBytesSubstring(MString(option->dialog->edit_modelname->GetText()).toAnsiString(), 20);
 		option->comment = getMultiBytesSubstring(MString(option->dialog->memo_comment->GetText()).toAnsiString(), 256);
@@ -439,9 +490,9 @@ struct GPBScene {
 	float ambient[3];
 	GPBScene() {
 		cameraName = MAnsiString("");
-		ambient[0] = 0.1f;
-		ambient[1] = 0.2f;
-		ambient[2] = 0.3f;
+		ambient[0] = 0.17205810546875f;
+		ambient[1] = 0.1f;
+		ambient[2] = 0.1f;
 	}
 };
 
@@ -619,6 +670,22 @@ static void calcRadius(GPBBounding& bounding) {
 }
 
 /// <summary>
+/// U+007E より大きいコードが存在したら1を返す
+/// </summary>
+/// <param name="text"></param>
+/// <returns></returns>
+static int checkOver(const MString& text) {
+	for (const wchar_t* ptr = text.c_str() + text.length(); ptr > text.c_str(); ) {
+		ptr = text.prev(ptr);
+		if ((*ptr) > 0x7e) {
+			return 1;
+		}
+	}
+	return 0;
+}
+
+
+/// <summary>
 /// バイナリファイルを書き出す
 /// </summary>
 /// <param name="index"></param>
@@ -657,23 +724,23 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 		switch (i) {
 		case 0:
 			ref.type = REF_MESH;
-			ref.name = MAnsiString("Mesh");
-			break;
-		case 3:
-			ref.type = REF_NODE;
-			ref.name = MAnsiString("Bone0");
-			break;
-		case 2:
-			ref.type = REF_ANIMATIONS;
-			ref.name = MAnsiString("__Animations__");
+			ref.name = MAnsiString("n0_Mesh");
 			break;
 		case 1:
 			ref.type = REF_SCENE;
 			ref.name = MAnsiString("__SCENE__");
 			break;
+		case 2:
+			ref.type = REF_ANIMATIONS;
+			ref.name = MAnsiString("__Animations__");
+			break;
+		case 3:
+			ref.type = REF_NODE;
+			ref.name = MAnsiString("n0");
+			break;
 		case 4:
 			ref.type = REF_NODE;
-			ref.name = MAnsiString("Joint0");
+			ref.name = MAnsiString(JOINTNAME);
 			break;
 		}
 		refTable.push_back(ref);
@@ -682,19 +749,24 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 	GPBScene scene;
 	std::vector<GPBKey> keyvals;
 
-	for (int i = 0; i < 2; ++i) {
+	for (int i = 0; i <= 2; ++i) {
 		GPBKey keyval;
-		keyval.msec = 60 * 1000 * i;
+		keyval.msec = 30 * 1000 * i;
 		switch (i) {
 		case 0:
-			keyval.p[0] = 0.0f;
-			keyval.p[1] = -1.0f;
-			keyval.p[2] = 1.0f;
-			break;
-		case 1:
-			keyval.p[0] = 1.0f;
+			keyval.p[0] = -1.0f;
 			keyval.p[1] = 1.0f;
 			keyval.p[2] = 0.0f;
+			break;
+		case 1:
+			keyval.p[0] = 0.0f;
+			keyval.p[1] = 0.0f;
+			keyval.p[2] = 0.5f;
+			break;
+		case 2:
+			keyval.p[0] = 1.0f;
+			keyval.p[1] = 1.0f;
+			keyval.p[2] = 1.0f;
 			break;
 		}
 		keyvals.push_back(keyval);
@@ -736,16 +808,9 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 			bone_manager.GetBaseMatrix(bone_id[i], bone_param[i].base_mtx);
 			//bone_manager.GetDeformScale(bone_id[i], bone_param[i].scale);
 			bone_manager.GetName(bone_id[i], name);
-			bone_manager.GetIKChain(bone_id[i], bone_param[i].ikchain);
 			bone_manager.GetDummy(bone_id[i], bone_param[i].dummy);
 
 			bone_param[i].name = MString(name);
-			{
-				MQAngle angle_min, angle_max;
-				bone_manager.GetAngleMin(bone_id[i], angle_min);
-				bone_manager.GetAngleMax(bone_id[i], angle_max);
-				bone_param[i].twist = (angle_max.bank == 0 && angle_min.bank == 0 && angle_max.pitch == 0 && angle_min.pitch == 0);
-			}
 			{
 				MQBoneManager::LINK_PARAM param;
 				bone_manager.GetLink(bone_id[i], param);
@@ -760,15 +825,6 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 				if(!children.empty())
 					bone_param[i].tip_id = children.front();
 			}
-			if(bone_param[i].ikchain > 0){
-				std::wstring name;
-				std::wstring tip_name;
-				bone_manager.GetIKName(bone_id[i], name, tip_name);
-				bone_param[i].ik_name = name;
-				bone_param[i].ik_tip_name = tip_name;
-				
-				bone_manager.GetIKParent(bone_id[i], bone_param[i].ikparent, bone_param[i].ikparent_isik);
-			}
 		}
 	}
 
@@ -780,8 +836,12 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 	option.plugin = this;
 	option.lang = &language;
 	option.visible_only = false;
+	option.mtlfile = MTLFILE_FORCE;
+
 	option.bone_exists = (bone_num > 0);
 	option.output_bone = true;
+	
+	option.experimental = false;
 	option.output_hsp = false;
 	option.struct_mode = STRUCT_SIMPLE;
 	// ファイル名だけ取り出して20文字に制限
@@ -791,6 +851,8 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 	MQSetting *setting = OpenSetting();
 	if(setting != NULL){
 		setting->Load("VisibleOnly", option.visible_only, option.visible_only);
+		setting->Load("MtlFile", option.mtlfile, option.mtlfile);
+		setting->Load("Experimental", option.experimental, option.experimental);
 		setting->Load("OutputHsp", option.output_hsp, option.output_hsp);
 	}
 	MQFileDialogInfo dlginfo;
@@ -812,9 +874,9 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 	scaling = dlginfo.scale;
 	if(setting != NULL){
 		setting->Save("VisibleOnly", option.visible_only);
-		//setting->Save("Bone", option.output_bone);
-		//setting->Save("IKEnd", option.output_ik_end);
-		//setting->Save("Facial", option.output_facial);
+		setting->Save("MtlFile", option.mtlfile);
+		setting->Save("Experimental", option.experimental);
+		setting->Save("OutputHsp", option.output_hsp);
 		CloseSetting(setting);
 	}
 
@@ -962,15 +1024,9 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 					bone_param[i].parent = 0;
 				}
 			}
-			if(bone_param[i].twist){
-				bone_param[i].twist = false;
-				bone_param[bone_id_index[bone_param[i].parent]].twist = true;
-			}
 		}
 	}
 	int pmdbone_num = 0;
-	std::vector<int> ik_chain_end_list;
-
 	for(int i=0; i<bone_num; i++){
 		// Determine PMD bone index.
 		bone_param[i].pmd_index = pmdbone_num++;
@@ -980,7 +1036,6 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 		UINT tip_parent_id = bone_param[bone_id_index[bone_param[i].tip_id]].parent;
 		assert(bone_param[i].id == tip_parent_id);
 	}
-	// Construct IK chain
 
 	for(int i=0; i<bone_num; i++){
 		// name
@@ -1035,6 +1090,7 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 				material.orgName = mat->GetNameW();
 
 				isDouble = mat->GetDoubleSided();
+				//int vertexColor = mat->GetVertexColor();
 
 				col = mat->GetColor();
 				dif = mat->GetDiffuse();
@@ -1201,6 +1257,40 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 	for (const auto& material : materials) {
 		if (material.enable) {
 			enableMaterialNum += 1;
+
+			{
+				auto result = checkOver(material.convName);
+				if (result) {
+					MQWindow mainwin = MQWindow::GetMainWindow();
+					MString message = MString(language.Search("InvalidMaterialChar"))
+						+ L"\n"
+						+ material.convName;
+					MQDialog::MessageWarningBox(mainwin,
+						message.c_str(),
+						GetResourceString("Error"));
+					for (size_t i = 0; i < expobjs.size(); i++) {
+						delete expobjs[i];
+					}
+					return FALSE;
+				}
+			}
+
+			if (material.useTexture) {
+				auto result = checkOver(material.convDiffuseTexture);
+				if (result) {
+					MQWindow mainwin = MQWindow::GetMainWindow();
+					MString message = MString(language.Search("InvalidTextureChar"))
+						+ L"\n"
+						+ material.convDiffuseTexture;
+					MQDialog::MessageWarningBox(mainwin,
+						message.c_str(),
+						GetResourceString("Error"));
+					for (size_t i = 0; i < expobjs.size(); i++) {
+						delete expobjs[i];
+					}
+					return FALSE;
+				}
+			}
 		}
 	}
 
@@ -1217,9 +1307,36 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 	}
 
 	FILE* fhMaterial = nullptr;
-	err = _wfopen_s(&fhMaterial, materialPath.c_str(), L"w");
-	if (err != 0) {
-		fhMaterial = nullptr;
+	if (option.mtlfile != MTLFILE_NO) {
+		bool tryWrite = true;
+		switch (option.mtlfile) {
+		case MTLFILE_CONFIRM:
+		case MTLFILE_FORBIDDEN:
+			//access();
+			//PathFileExist();
+			err = _wfopen_s(&fhMaterial, materialPath.c_str(), L"r");
+			fclose(fhMaterial);
+			fhMaterial = nullptr;
+			if (err == 0 && option.mtlfile == MTLFILE_CONFIRM) {
+				MQWindow mainwin = MQWindow::GetMainWindow();
+				MString message = MString(language.Search("OverwriteConfirm")) + L"\n" + materialPath;
+				const auto result = MQDialog::MessageOkCancelBox(mainwin,
+					message.c_str(),
+					language.Search("Option"));
+				tryWrite = (result == MQDialog::DIALOG_RESULT::DIALOG_OK);
+			}
+			break;
+		case MTLFILE_FORCE:
+			tryWrite = true;
+			break;
+		}
+
+		if (tryWrite) {
+			err = _wfopen_s(&fhMaterial, materialPath.c_str(), L"w");
+			if (err != 0) {
+				fhMaterial = nullptr;
+			}
+		}
 	}
 	// debug
 	//FMES(fhMaterial, hspPath.toAnsiString().c_str());
@@ -1281,18 +1398,18 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 		GPBBounding bounding;
 
 		// 属性タイプと数値数の配列 position, 3 など
-		DWORD attrNum = 5;
+		DWORD attrNum = 3;
 		fwrite(&attrNum, sizeof(DWORD), 1, fh);
-		DWORD attr[10] = {
+		DWORD attr[6] = {
 			ATTR_POSITION, 3,
 			ATTR_NORMAL, 3,
 			ATTR_TEXCOORD0, 2,
-			ATTR_BLENDWEIGHTS, 4,
-			ATTR_BLENDINDICES, 4,
+			//ATTR_BLENDWEIGHTS, 4,
+			//ATTR_BLENDINDICES, 4,
 		};
-		fwrite(&attr, sizeof(DWORD), 10, fh);
+		fwrite(&attr, sizeof(DWORD), attrNum * 2, fh);
 
-		DWORD vertexByteCount = total_vert_num * 16 * sizeof(float);
+		DWORD vertexByteCount = total_vert_num * (3 + 3 + 2) * sizeof(float);
 		fwrite(&vertexByteCount, sizeof(DWORD), 1, fh);
 
 		for (int j = 0; j < total_vert_num; ++j) {
@@ -1324,7 +1441,7 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 			uv[0] = vert_coord[j].u;
 			uv[1] = 1.0f - vert_coord[j].v;
 
-
+#if 0
 			UINT vert_bone_id[16];
 			float weights[16];
 			int weight_num = 0;
@@ -1381,6 +1498,7 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 			}
 			indices[0] = bone_index[0];
 			//weight[0] = bone_weight;
+#endif
 
 			for (int index = 0; index < 3; ++index) {
 				bounding.max[index] = fmaxf(bounding.max[index], pos[index]);
@@ -1391,8 +1509,8 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 			fwrite(&nrm, sizeof(float), 3, fh);
 			fwrite(&uv, sizeof(float), 2, fh);
 
-			fwrite(&weight, sizeof(float), 4, fh);
-			fwrite(&indices, sizeof(float), 4, fh);
+			//fwrite(&weight, sizeof(float), 4, fh);
+			//fwrite(&indices, sizeof(float), 4, fh);
 		}
 
 		calcRadius(bounding);
@@ -1529,6 +1647,14 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 
 	//// シーンの書き出し
 	refTable[indexScene].offset = ftell(fh);
+
+	float identity[16] = {
+		1.0f, 0.0f, 0.0f, 0.0f,
+		0.0f, 1.0f, 0.0f, 0.0f,
+		0.0f, 0.0f, 1.0f, 0.0f,
+		0.0f, 0.0f, 0.0f, 1.0f,
+	};
+
 	DWORD nodeNum = 2;
 	fwrite(&nodeNum, sizeof(DWORD), 1, fh);
 	for (int i = 0; i < nodeNum; ++i) {
@@ -1546,13 +1672,7 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 		}
 
 		fwrite(&nodeType, sizeof(DWORD), 1, fh);
-		float transform[16] = {
-			1.0f, 0.0f, 0.0f, 0.0f,
-			0.0f, 1.0f, 0.0f, 0.0f,
-			0.0f, 0.0f, 1.0f, 0.0f,
-			0.0f, 0.0f, 0.0f, 1.0f,
-		};
-		fwrite(&transform, sizeof(float), 16, fh);
+		fwrite(&identity, sizeof(float), 16, fh);
 
 		MAnsiString parent("");
 		DWORD parentByteNum = parent.length();
@@ -1573,15 +1693,26 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 			break;
 		case 1:
 			{
-				MAnsiString meshName("#Mesh");
+				MAnsiString meshName("#n0_Mesh");
 				DWORD meshNameByteNum = meshName.length();
 				fwrite(&meshNameByteNum, sizeof(DWORD), 1, fh);
 				fwrite(meshName.c_str(), sizeof(char), meshNameByteNum, fh);
 
-				BYTE hasSkin = 0;
+				BYTE hasSkin = 1;
 				fwrite(&hasSkin, sizeof(BYTE), 1, fh);
 				if (hasSkin) {
-					// Not implemented
+					fwrite(&identity, sizeof(float), 16, fh); // bindShape
+
+					DWORD jointCount = 1;
+					fwrite(&jointCount, sizeof(DWORD), 1, fh);
+					MAnsiString boneName("#n0_Joint");
+					DWORD boneNameByteNum = boneName.length();
+					fwrite(&boneNameByteNum, sizeof(DWORD), 1, fh);
+					fwrite(boneName.c_str(), sizeof(char), boneNameByteNum, fh);
+
+					DWORD inverseNum = jointCount * 16;
+					fwrite(&inverseNum, sizeof(DWORD), 1, fh);
+					fwrite(&identity, sizeof(float), 16, fh);
 				}
 
 				fwrite(&enableMaterialNum, sizeof(DWORD), 1, fh);
@@ -1619,7 +1750,7 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 	DWORD channelNum = 1;
 	fwrite(&channelNum, sizeof(DWORD), 1, fh);
 	for (int i = 0; i < channelNum; ++i) {
-		MAnsiString targetName = "Joint0";
+		MAnsiString targetName = JOINTNAME;
 		DWORD targetNameLength = targetName.length();
 		fwrite(&targetNameLength, sizeof(DWORD), 1, fh);
 		fwrite(targetName.c_str(), sizeof(char), targetNameLength, fh);
@@ -1700,6 +1831,7 @@ bool ExportGPBPlugin::LoadBoneSettingFile()
 	MString dir = GetResourceDir();
 #endif
 	MString filename = MFileUtil::combinePath(dir, L"ExportPMDBoneSetting.xml");
+	return false; // 非対応
 
 	tinyxml2::XMLDocument doc;
 	tinyxml2::XMLError err = doc.LoadFile(filename.toAnsiString().c_str());
@@ -1757,6 +1889,7 @@ bool ExportGPBPlugin::LoadBoneSettingFile()
 
 	return true;
 }
+
 
 int ExportGPBPlugin::makeMaterial(FILE* f, const std::vector<GPBMaterial>& materials) {
 
