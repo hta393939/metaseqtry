@@ -54,10 +54,10 @@ enum {
 };
 
 enum {
-	MTLFILE_NO = 0,
-	MTLFILE_FORCE = 1,
-	MTLFILE_CONFIRM = 2,
-	MTLFILE_FORBIDDEN = 3,
+	FILEOUT_NO = 0,
+	FILEOUT_FORCE = 1,
+	FILEOUT_CONFIRM = 2,
+	FILEOUT_OWFORBIDDEN = 3,
 };
 
 #ifdef _WIN32
@@ -228,8 +228,8 @@ private:
 	bool LoadBoneSettingFile();
 
 	int makeMaterial(FILE* fhMaterial, const std::vector<GPBMaterial>& materials);
-	// 
-	int makeHSP(FILE* f, const GPBBounding& bounding);
+	// プレビューコードを書き出す
+	int makeHSP(FILE* f, const GPBBounding& bounding, const MString& name);
 };
 
 
@@ -277,16 +277,17 @@ public:
 	//MQComboBox *combo_bone;
 	//MQComboBox *combo_ikend;
 	//MQComboBox *combo_facial;
-	//MQEdit *edit_modelname;
-	//MQMemo *memo_comment;
+	MQEdit *edit_textureprefix;
+	//MQMemo *memo_comment; // 広いのが Memo か...
 
 	MQComboBox* combo_mtlfile;
+	MQComboBox* combo_hspfile;
 
-	MQCheckBox* experimental;
-	MQCheckBox* output_hsp;
+	//MQCheckBox* experimental;
 
 	GPBOptionDialog(int id, int parent_frame_id, ExportGPBPlugin *plugin, MLanguage& language);
 
+	// どこで結びつけている???
 	BOOL ComboBoneChanged(MQWidgetBase *sender, MQDocument doc);
 	//BOOL ComboExperimentalChanged(MQWidgetBase* sender, MQDocument doc);
 };
@@ -311,16 +312,31 @@ GPBOptionDialog::GPBOptionDialog(int id, int parent_frame_id, ExportGPBPlugin *p
 	hframe = CreateHorizontalFrame(group);
 	CreateLabel(hframe, language.Search("MtlFile"));
 	this->combo_mtlfile = CreateComboBox(hframe);
-	combo_mtlfile->AddItem(language.Search("MtlFileNo"));
-	combo_mtlfile->AddItem(language.Search("MtlFileForce"));
-	combo_mtlfile->AddItem(language.Search("MtlFileConfirm"));
-	combo_mtlfile->AddItem(language.Search("MtlFileForbidden"));
+	combo_mtlfile->AddItem(language.Search("FileOutNo"));
+	combo_mtlfile->AddItem(language.Search("FileOutForce"));
+	combo_mtlfile->AddItem(language.Search("FileOutConfirm"));
+	combo_mtlfile->AddItem(language.Search("FileOutOWForbidden"));
 	combo_mtlfile->SetHintSizeRateX(8);
 	combo_mtlfile->SetFillBeforeRate(1);
 
-	experimental = CreateCheckBox(group, language.Search("Experimental"));
-	output_hsp = CreateCheckBox(group, language.Search("OutputHsp"));
+	//experimental = CreateCheckBox(group, language.Search("Experimental"));
+	//output_hsp = CreateCheckBox(group, language.Search("OutputHsp"));
 
+	hframe = CreateHorizontalFrame(group);
+	CreateLabel(hframe, language.Search("TexturePrefix"));
+	this->edit_textureprefix = CreateEdit(hframe);
+	//edit_textureprefix->SetMaxAnsiLength(20);
+	edit_textureprefix->SetHorzLayout(LAYOUT_FILL);
+
+	hframe = CreateHorizontalFrame(group);
+	CreateLabel(hframe, language.Search("HspFile"));
+	this->combo_hspfile = CreateComboBox(hframe);
+	combo_hspfile->AddItem(language.Search("FileOutNo"));
+	combo_hspfile->AddItem(language.Search("FileOutForce"));
+	combo_hspfile->AddItem(language.Search("FileOutConfirm"));
+	combo_hspfile->AddItem(language.Search("FileOutOWForbidden"));
+	combo_hspfile->SetHintSizeRateX(8);
+	combo_hspfile->SetFillBeforeRate(1);
 
 #if 0
 	hframe = CreateHorizontalFrame(group);
@@ -350,13 +366,8 @@ GPBOptionDialog::GPBOptionDialog(int id, int parent_frame_id, ExportGPBPlugin *p
 	combo_facial->SetFillBeforeRate(1);
 #endif
 
-#if 0
-	hframe = CreateHorizontalFrame(group);
-	CreateLabel(hframe, language.Search("ModelName"));
-	this->edit_modelname = CreateEdit(hframe); 
-	edit_modelname->SetMaxAnsiLength(20);
-	edit_modelname->SetHorzLayout(LAYOUT_FILL);
 
+#if 0
 	CreateLabel(group, language.Search("Comment"));
 	memo_comment = CreateMemo(group);
 	memo_comment->SetMaxLength(256);
@@ -377,6 +388,7 @@ BOOL GPBOptionDialog::ComboExperimentalChanged(MQWidgetBase* sender, MQDocument 
 }
 #endif
 
+#define MYSTR MString
 
 struct CreateDialogOptionParam
 {
@@ -392,11 +404,11 @@ struct CreateDialogOptionParam
 	bool output_bone;
 
 	int mtlfile;
-	bool experimental;
-	bool output_hsp;
-	//MAnsiString modelname;
-	MAnsiString comment;
+	MYSTR texture_prefix;
+	int hspfile;
 
+	//bool experimental;
+	//MAnsiString comment;
 };
 
 /// <summary>
@@ -419,34 +431,24 @@ static void CreateDialogOption(bool init, MQFileDialogCallbackParam *param, void
 		dialog->combo_mtlfile->SetEnabled(true);
 		dialog->combo_mtlfile->SetCurrentIndex(option->mtlfile);
 
-		dialog->experimental->SetChecked(option->experimental);
+		dialog->edit_textureprefix->SetEnabled(true);
+		dialog->edit_textureprefix->SetText(std::wstring(option->texture_prefix.c_str()));
 
-		dialog->output_hsp->SetEnabled(option->experimental);
-		dialog->output_hsp->SetChecked(option->output_hsp);
-#if 0
-		dialog->combo_bone->SetEnabled(option->bone_exists);
-		dialog->combo_bone->SetCurrentIndex(option->output_bone ? 1 : 0);
-		dialog->combo_ikend->SetEnabled(option->bone_exists && option->output_bone);
-		dialog->combo_ikend->SetCurrentIndex(option->output_ik_end ? 1 : 0);
-
-		dialog->combo_facial->SetCurrentIndex(0);
-
-		dialog->edit_modelname->SetText(MString::fromAnsiString(option->modelname).c_str());
-#endif
+		dialog->combo_hspfile->SetEnabled(true);
+		dialog->combo_hspfile->SetCurrentIndex(option->hspfile);
 	}
 	else
 	{
 		option->visible_only = option->dialog->check_visible->GetChecked();
 
 		option->mtlfile = option->dialog->combo_mtlfile->GetCurrentIndex();
-		option->experimental = option->dialog->experimental->GetChecked();
-
-		option->output_hsp = option->dialog->output_hsp->GetChecked();
+		option->hspfile = option->dialog->combo_hspfile->GetCurrentIndex();
 #if 0
 		option->output_facial = option->dialog->combo_facial->GetCurrentIndex() == 1;
 		//option->modelname = getMultiBytesSubstring(MString(option->dialog->edit_modelname->GetText()).toAnsiString(), 20);
-		option->comment = getMultiBytesSubstring(MString(option->dialog->memo_comment->GetText()).toAnsiString(), 256);
 #endif
+		option->texture_prefix = option->dialog->edit_textureprefix->GetText();
+
 		delete option->dialog;
 	}
 }
@@ -491,8 +493,8 @@ struct GPBScene {
 	GPBScene() {
 		cameraName = MAnsiString("");
 		ambient[0] = 0.17205810546875f;
-		ambient[1] = 0.1f;
-		ambient[2] = 0.1f;
+		ambient[1] = 0.17205810546875f;
+		ambient[2] = 0.17205810546875f;
 	}
 };
 
@@ -508,11 +510,7 @@ struct PMDBoneParam {
 	MQPoint def_pos;
 	//MQPoint scale;
 	MString name;
-	int ikchain;
-	UINT ikparent;
-	bool ikparent_isik;
 	bool dummy;
-	bool twist;
 	std::vector<UINT> children;
 
 	int pmd_index;
@@ -525,22 +523,12 @@ struct PMDBoneParam {
 	bool movable;
 	UINT group_id;
 	UINT tip_id;
-	MString ik_name;
-	MString ik_tip_name;
 
-	MString ik_name_jp;
-	MString ik_tip_name_jp;
-	MString ik_name_en;
-	MString ik_tip_name_en;
 	PMDBoneParam(){
 		id = 0;
 		parent = 0;
 		child_num = 0;
-		ikchain = 0;
-		ikparent = 0;
-		ikparent_isik = false;
 		dummy = false;
-		twist = false;
 		pmd_index = -1;
 		root_group = -1;
 		group = -1;
@@ -677,7 +665,7 @@ static void calcRadius(GPBBounding& bounding) {
 static int checkOver(const MString& text) {
 	for (const wchar_t* ptr = text.c_str() + text.length(); ptr > text.c_str(); ) {
 		ptr = text.prev(ptr);
-		if ((*ptr) > 0x7e) {
+		if ((*ptr) > 0x7f) {
 			return 1;
 		}
 	}
@@ -836,29 +824,31 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 	option.plugin = this;
 	option.lang = &language;
 	option.visible_only = false;
-	option.mtlfile = MTLFILE_FORCE;
+	option.mtlfile = FILEOUT_FORCE;
 
 	option.bone_exists = (bone_num > 0);
 	option.output_bone = true;
-	
-	option.experimental = false;
-	option.output_hsp = false;
+
+	option.hspfile = FILEOUT_FORCE;
 	option.struct_mode = STRUCT_SIMPLE;
 	// ファイル名だけ取り出して20文字に制限
 	//option.modelname = getMultiBytesSubstring(MFileUtil::extractFileNameOnly(filename).toAnsiString(), 20);
-	option.comment = MAnsiString();
+	option.texture_prefix = MYSTR(L"res/");
 	// Load a setting.
 	MQSetting *setting = OpenSetting();
 	if(setting != NULL){
 		setting->Load("VisibleOnly", option.visible_only, option.visible_only);
 		setting->Load("MtlFile", option.mtlfile, option.mtlfile);
-		setting->Load("Experimental", option.experimental, option.experimental);
-		setting->Load("OutputHsp", option.output_hsp, option.output_hsp);
+		setting->Load("HspFile", option.hspfile, option.hspfile);
+		std::wstring texturePrefix(option.texture_prefix);
+		setting->Load("TexturePrefix", texturePrefix, texturePrefix);
+		option.texture_prefix = texturePrefix;
 	}
 	MQFileDialogInfo dlginfo;
 	memset(&dlginfo, 0, sizeof(dlginfo));
 	dlginfo.dwSize = sizeof(dlginfo);
 	dlginfo.scale = scaling;
+	// 軸の関係性は変更させない
 	dlginfo.hidden_flag = MQFileDialogInfo::HIDDEN_AXIS | MQFileDialogInfo::HIDDEN_INVERT_FACE;
 	//dlginfo.hidden_flag = MQFileDialogInfo::HIDDEN_AXIS | MQFileDialogInfo::HIDDEN_INVERT_FACE;
 	dlginfo.axis_x = MQFILE_TYPE_RIGHT;
@@ -875,8 +865,8 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 	if(setting != NULL){
 		setting->Save("VisibleOnly", option.visible_only);
 		setting->Save("MtlFile", option.mtlfile);
-		setting->Save("Experimental", option.experimental);
-		setting->Save("OutputHsp", option.output_hsp);
+		setting->Save("HspFile", option.hspfile);
+		setting->Save("TexturePrefix", option.texture_prefix);
 		CloseSetting(setting);
 	}
 
@@ -1048,17 +1038,6 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 				break;
 			}
 		}
-
-		// IK tip name
-		bone_param[i].ik_tip_name_jp = bone_param[i].ik_tip_name;
-		bone_param[i].ik_tip_name_en = bone_param[i].ik_tip_name;
-		for(auto it = m_BoneNameSetting.begin(); it != m_BoneNameSetting.end(); ++it){
-			if((*it).jp == bone_param[i].ik_tip_name || (*it).en == bone_param[i].ik_tip_name){
-				bone_param[i].ik_tip_name_jp = (*it).jp;
-				bone_param[i].ik_tip_name_en = (*it).en;
-				break;
-			}
-		}
 	}
 	std::map<int,std::pair<MString,MString> > group_names;
 	for(auto it = groups.begin();it != groups.end();it++){
@@ -1153,7 +1132,7 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 
 		material.convName = material.orgName;
 		if (material.useTexture) {
-			material.convDiffuseTexture = MString(L"res/") + material.orgDiffuseTexture;
+			material.convDiffuseTexture = option.texture_prefix + material.orgDiffuseTexture;
 		}
 
 		materials.push_back(material);
@@ -1281,10 +1260,13 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 					MQWindow mainwin = MQWindow::GetMainWindow();
 					MString message = MString(language.Search("InvalidTextureChar"))
 						+ L"\n"
-						+ material.convDiffuseTexture;
+						+ material.convDiffuseTexture
+						+ L" in "
+						+ material.orgName;
 					MQDialog::MessageWarningBox(mainwin,
 						message.c_str(),
 						GetResourceString("Error"));
+
 					for (size_t i = 0; i < expobjs.size(); i++) {
 						delete expobjs[i];
 					}
@@ -1307,26 +1289,32 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 	}
 
 	FILE* fhMaterial = nullptr;
-	if (option.mtlfile != MTLFILE_NO) {
-		bool tryWrite = true;
+	if (option.mtlfile != FILEOUT_NO) {
+		bool tryWrite = false;
 		switch (option.mtlfile) {
-		case MTLFILE_CONFIRM:
-		case MTLFILE_FORBIDDEN:
+		case FILEOUT_CONFIRM:
+		case FILEOUT_OWFORBIDDEN:
 			//access();
 			//PathFileExist();
 			err = _wfopen_s(&fhMaterial, materialPath.c_str(), L"r");
 			fclose(fhMaterial);
 			fhMaterial = nullptr;
-			if (err == 0 && option.mtlfile == MTLFILE_CONFIRM) {
-				MQWindow mainwin = MQWindow::GetMainWindow();
-				MString message = MString(language.Search("OverwriteConfirm")) + L"\n" + materialPath;
-				const auto result = MQDialog::MessageOkCancelBox(mainwin,
-					message.c_str(),
-					language.Search("Option"));
-				tryWrite = (result == MQDialog::DIALOG_RESULT::DIALOG_OK);
+			if (err) { // 存在しないので書き出す
+				tryWrite = true;
+			}
+			else {
+				tryWrite = false;
+				if (option.mtlfile == FILEOUT_CONFIRM) {
+					MQWindow mainwin = MQWindow::GetMainWindow();
+					MString message = MString(language.Search("OverwriteConfirm")) + L"\n" + materialPath;
+					const auto result = MQDialog::MessageOkCancelBox(mainwin,
+						message.c_str(),
+						language.Search("Option"));
+					tryWrite = (result == MQDialog::DIALOG_RESULT::DIALOG_OK);
+				}
 			}
 			break;
-		case MTLFILE_FORCE:
+		case FILEOUT_FORCE:
 			tryWrite = true;
 			break;
 		}
@@ -1341,11 +1329,42 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 	// debug
 	//FMES(fhMaterial, hspPath.toAnsiString().c_str());
 
-	FILE* fhHSP = nullptr;
-	if (option.output_hsp) {
-		err = _wfopen_s(&fhHSP, hspPath.c_str(), L"w");
-		if (err != 0) {
-			fhHSP = nullptr;
+	FILE* fhHsp = nullptr;
+	if (option.hspfile != FILEOUT_NO) {
+		bool tryWrite = false;
+		switch (option.hspfile) {
+		case FILEOUT_CONFIRM:
+		case FILEOUT_OWFORBIDDEN:
+			//access();
+			//PathFileExist();
+			err = _wfopen_s(&fhHsp, hspPath.c_str(), L"r");
+			fclose(fhHsp);
+			fhHsp = nullptr;
+			if (err) { // 存在しないので書き出す
+				tryWrite = true;
+			}
+			else {
+				tryWrite = false;
+				if (option.hspfile == FILEOUT_CONFIRM) {
+					MQWindow mainwin = MQWindow::GetMainWindow();
+					MString message = MString(language.Search("OverwriteConfirm")) + L"\n" + hspPath;
+					const auto result = MQDialog::MessageOkCancelBox(mainwin,
+						message.c_str(),
+						language.Search("Option"));
+					tryWrite = (result == MQDialog::DIALOG_RESULT::DIALOG_OK);
+				}
+			}
+			break;
+		case FILEOUT_FORCE:
+			tryWrite = true;
+			break;
+		}
+
+		if (tryWrite) {
+			err = _wfopen_s(&fhHsp, hspPath.c_str(), L"w");
+			if (err != 0) {
+				fhHsp = nullptr;
+			}
 		}
 	}
 
@@ -1638,8 +1657,9 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 	if (fhMaterial) {
 		this->makeMaterial(fhMaterial, materials);
 	}
-	if (fhHSP) {
-		this->makeHSP(fhHSP, wholeBounding);
+	if (fhHsp) {
+		MString name = MString(L"res/") + MFileUtil::extractFileNameOnly(filename);
+		this->makeHSP(fhHsp, wholeBounding, name);
 	}
 
 	DWORD elementNum = 2;
@@ -1807,8 +1827,8 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 	if (fhMaterial) {
 		err = fclose(fhMaterial);
 	}
-	if (fhHSP) {
-		err = fclose(fhHSP);
+	if (fhHsp) {
+		err = fclose(fhHsp);
 	}
 
 #if 0
@@ -1971,29 +1991,40 @@ material textured\n\
 
 
 // .hsp は res フォルダの一つ上に配置しないといけない
-int ExportGPBPlugin::makeHSP(FILE* f, const GPBBounding& bounding) {
-	float fov = 45.0f * 3.141592f * 2.0f / 180.0f;
-	float dist = bounding.radius / tanf(fov * 0.5f) + bounding.radius;
+int ExportGPBPlugin::makeHSP(FILE* f, const GPBBounding& bounding, const MString& name) {
+	float fov = 45.0f * 3.141592f / 180.0f;
+	float width = bounding.max[0] - bounding.min[0];
+	float height = bounding.max[1] - bounding.min[1];
+	float thick = bounding.max[2] - bounding.min[2];
+	// 横長の場合のみ正確
+	float dist = fmaxf(width, height) * 0.5f / tanf(fov * 0.5f) + thick * 0.5f;
 	FMES(f, "\
 #include \"hgimg4.as\"\n\
 ddim vals, 4\n\
 vals(0) = %.6f, %.6f, %.6f, %.6f\n\
-gpload id, \"res/%s\"\n\
-//gpaddanim id, \"whole\", 0, -1, 0\n\
-//gpact id, \"whole\", GPACT_PLAY\n\
-setpos GPOBJ_CAMERA, vals(0), vals(1), vals(2) + vals(3)\n\
-gplookat GPOBJ_CAMERA, vals(0), vals(1), vals(2)\n\
+w = ginfo(12)\n\
+h = ginfo(13)\n\
+setcls 1, 0xf0f0ff\n\
+gpload id, \"%s\"\n\
+gpnull camera_id\n\
+far = vals(3) * 2.0\n\
+if far < 768.0 : far = 768.0\n\
+gpcamera camera_id, 45, double(w) / double(h), 0.002, far\n\
+gpusecamera camera_id\n\
+setpos camera_id, vals(0), vals(1), vals(2) + vals(3)\n\
+gplookat camera_id, vals(0), vals(1), vals(2)\n\
 repeat\n\
   redraw 0\n\
   gpdraw\n\
   pos 8, 8\n\
-  mes \"%s, \" + dist\n\
+  mes \"%s\"\n\
   redraw 1\n\
   await 1000 / 60\n\
 loop\n\
 ",
 		bounding.center[0], bounding.center[1], bounding.center[2], dist,
-		"try01", IDENVER);
+		name.toAnsiString().c_str(),
+		IDENVER);
 	return 0;
 }
 
