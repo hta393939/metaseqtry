@@ -388,7 +388,7 @@ BOOL GPBOptionDialog::ComboExperimentalChanged(MQWidgetBase* sender, MQDocument 
 }
 #endif
 
-#define MYSTR MString
+#define MYSTR std::wstring
 
 struct CreateDialogOptionParam
 {
@@ -414,7 +414,7 @@ struct CreateDialogOptionParam
 /// <summary>
 /// オプションダイアログを生成する
 /// </summary>
-/// <param name="init">true だと初期値で初期化する。false だと option に値を書き出す</param>
+/// <param name="init">true だとoption値で初期化する。false だと option に値を書き出す</param>
 /// <param name="param"></param>
 /// <param name="ptr"></param>
 static void CreateDialogOption(bool init, MQFileDialogCallbackParam *param, void *ptr)
@@ -432,7 +432,7 @@ static void CreateDialogOption(bool init, MQFileDialogCallbackParam *param, void
 		dialog->combo_mtlfile->SetCurrentIndex(option->mtlfile);
 
 		dialog->edit_textureprefix->SetEnabled(true);
-		dialog->edit_textureprefix->SetText(std::wstring(option->texture_prefix.c_str()));
+		dialog->edit_textureprefix->SetText(option->texture_prefix);
 
 		dialog->combo_hspfile->SetEnabled(true);
 		dialog->combo_hspfile->SetCurrentIndex(option->hspfile);
@@ -444,7 +444,6 @@ static void CreateDialogOption(bool init, MQFileDialogCallbackParam *param, void
 		option->mtlfile = option->dialog->combo_mtlfile->GetCurrentIndex();
 		option->hspfile = option->dialog->combo_hspfile->GetCurrentIndex();
 #if 0
-		option->output_facial = option->dialog->combo_facial->GetCurrentIndex() == 1;
 		//option->modelname = getMultiBytesSubstring(MString(option->dialog->edit_modelname->GetText()).toAnsiString(), 20);
 #endif
 		option->texture_prefix = option->dialog->edit_textureprefix->GetText();
@@ -819,30 +818,30 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 
 	// Show a dialog for converting axes
 	// 座標軸変換用ダイアログの表示
+	// 初期デフォルト値
 	float scaling = 1;
 	CreateDialogOptionParam option;
 	option.plugin = this;
 	option.lang = &language;
 	option.visible_only = false;
-	option.mtlfile = FILEOUT_FORCE;
+	option.mtlfile = FILEOUT_CONFIRM;
 
 	option.bone_exists = (bone_num > 0);
 	option.output_bone = true;
 
-	option.hspfile = FILEOUT_FORCE;
+	option.hspfile = FILEOUT_CONFIRM;
 	option.struct_mode = STRUCT_SIMPLE;
 	// ファイル名だけ取り出して20文字に制限
 	//option.modelname = getMultiBytesSubstring(MFileUtil::extractFileNameOnly(filename).toAnsiString(), 20);
 	option.texture_prefix = MYSTR(L"res/");
-	// Load a setting.
+
+	// Load a setting. 存在する場合はその値を使う
 	MQSetting *setting = OpenSetting();
 	if(setting != NULL){
 		setting->Load("VisibleOnly", option.visible_only, option.visible_only);
 		setting->Load("MtlFile", option.mtlfile, option.mtlfile);
 		setting->Load("HspFile", option.hspfile, option.hspfile);
-		std::wstring texturePrefix(option.texture_prefix);
-		setting->Load("TexturePrefix", texturePrefix, texturePrefix);
-		option.texture_prefix = texturePrefix;
+		setting->Load("TexturePrefix", option.texture_prefix, option.texture_prefix);
 	}
 	MQFileDialogInfo dlginfo;
 	memset(&dlginfo, 0, sizeof(dlginfo));
@@ -1132,7 +1131,7 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 
 		material.convName = material.orgName;
 		if (material.useTexture) {
-			material.convDiffuseTexture = option.texture_prefix + material.orgDiffuseTexture;
+			material.convDiffuseTexture = MString(option.texture_prefix) + material.orgDiffuseTexture;
 		}
 
 		materials.push_back(material);
@@ -2018,6 +2017,7 @@ repeat\n\
   gpdraw\n\
   pos 8, 8\n\
   mes \"%s\"\n\
+  if id < 0 : mes \"gpload error\"\n\
   redraw 1\n\
   await 1000 / 60\n\
 loop\n\

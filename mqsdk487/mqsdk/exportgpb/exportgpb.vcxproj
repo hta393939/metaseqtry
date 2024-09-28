@@ -206,6 +206,7 @@
     <None Include="ExportPMDBoneSetting.xml">
       <SubType>Designer</SubType>
     </None>
+    <None Include="readme.md" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\MQ3DLib.h" />
