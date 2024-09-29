@@ -950,7 +950,9 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 
 			if(total_vert_num > 65535){
 				MQWindow mainwin = MQWindow::GetMainWindow();
-				MQDialog::MessageWarningBox(mainwin, language.Search("TooManyVertices"), GetResourceString("Error"));
+				MQDialog::MessageWarningBox(mainwin,
+					language.Search("TooManyVertices"),
+					GetResourceString("Error"));
 				for(size_t i=0; i<expobjs.size(); i++){
 					delete expobjs[i];
 				}
@@ -959,6 +961,7 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 		}
 	}
 
+#if 0
 	std::map<UINT, int> bone_id_index;
 	// Initialize bones.
 	if(bone_num > 0)
@@ -1068,6 +1071,7 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 			}
 		}
 	}
+#endif
 
 	for (int m = 0; m <= numMat; ++m) {
 		GPBMaterial material;
@@ -1316,16 +1320,19 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 			//access();
 			//PathFileExist();
 			err = _wfopen_s(&fhMaterial, materialPath.c_str(), L"r");
-			fclose(fhMaterial);
-			fhMaterial = nullptr;
 			if (err) { // 存在しないので書き出す
 				tryWrite = true;
+				fhMaterial = nullptr;
 			}
 			else {
+				fclose(fhMaterial);
+				fhMaterial = nullptr;
 				tryWrite = false;
 				if (option.mtlfile == FILEOUT_CONFIRM) {
 					MQWindow mainwin = MQWindow::GetMainWindow();
-					MString message = MString(language.Search("OverwriteConfirm")) + L"\n" + materialPath;
+					MString message = MString(language.Search("OverwriteConfirm"))
+						+ L"\n"
+						+ materialPath;
 					const auto result = MQDialog::MessageOkCancelBox(mainwin,
 						message.c_str(),
 						language.Search("Option"));
@@ -1357,16 +1364,19 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 			//access();
 			//PathFileExist();
 			err = _wfopen_s(&fhHsp, hspPath.c_str(), L"r");
-			fclose(fhHsp);
-			fhHsp = nullptr;
 			if (err) { // 存在しないので書き出す
 				tryWrite = true;
+				fhHsp = nullptr;
 			}
 			else {
+				fclose(fhHsp);
+				fhHsp = nullptr;
 				tryWrite = false;
 				if (option.hspfile == FILEOUT_CONFIRM) {
 					MQWindow mainwin = MQWindow::GetMainWindow();
-					MString message = MString(language.Search("OverwriteConfirm")) + L"\n" + hspPath;
+					MString message = MString(language.Search("OverwriteConfirm"))
+						+ L"\n"
+						+ hspPath;
 					const auto result = MQDialog::MessageOkCancelBox(mainwin,
 						message.c_str(),
 						language.Search("Option"));
@@ -1938,19 +1948,12 @@ material colored\n\
 	u_worldViewProjectionMatrix = WORLD_VIEW_PROJECTION_MATRIX\n\
     u_cameraPosition = CAMERA_WORLD_POSITION\n\
 	u_inverseTransposeWorldViewMatrix = INVERSE_TRANSPOSE_WORLD_VIEW_MATRIX\n\
-	technique\n\
-	{\n\
-		pass\n\
-		{\n\
-			vertexShader = res/shaders/colored.vert\n\
-			fragmentShader = res/shaders/colored.frag\n\
-			defines = SPECULAR;DIRECTIONAL_LIGHT_COUNT 1\n\
-		}\n\
-	}\n\
 }\n\
 material textured\n\
 {\n\
 	u_worldViewProjectionMatrix = WORLD_VIEW_PROJECTION_MATRIX\n\
+    u_cameraPosition = CAMERA_WORLD_POSITION\n\
+	u_inverseTransposeWorldViewMatrix = INVERSE_TRANSPOSE_WORLD_VIEW_MATRIX\n\
 	sampler u_diffuseTexture\n\
 	{\n\
 		mipmap = true\n\
@@ -1958,15 +1961,6 @@ material textured\n\
 		wrapT = CLAMP\n\
 		minFilter = LINEAR_MIPMAP_LINEAR\n\
 		magFilter = LINEAR\n\
-	}\n\
-	technique\n\
-	{\n\
-		pass\n\
-		{\n\
-			vertexShader = res/shaders/textured.vert\n\
-			fragmentShader = res/shaders/textured.frag\n\
-			defines = SPECULAR;DIRECTIONAL_LIGHT_COUNT 1\n\
-		}\n\
 	}\n\
 }\n\
 ");
@@ -1977,10 +1971,23 @@ material textured\n\
 		}
 
 		const auto name = material.convName.toAnsiString();
-		FMES(f, "material %s : ", name.c_str());
-		if (material.useTexture) {
-			FMES(f, "textured\n\
-{\n\
+		FMES(f, "material %s : %s\n{\n", name.c_str(), material.useTexture ? "textured" : "colored");
+
+		FMES(f, "\
+	u_specularExponent = %.6f\n\
+", material.spc_pow);
+
+		FMES(f, "\
+	renderState\n\
+	{\n\
+		cullFace = %s\n\
+		depthTest = true\n\
+	}\n\
+", material.isDouble ? "false" : "true");
+
+		if (material.useTexture) { // テクスチャ使用
+
+			FMES(f, "\
 	sampler u_diffuseTexture\n\
 	{\n\
 		path = %s\n\
@@ -1989,23 +1996,38 @@ material textured\n\
 	}\n\
 ", material.convDiffuseTexture.toAnsiString().c_str());
 
+			FMES(f, "\
+	technique\n\
+	{\n\
+		pass\n\
+		{\n\
+			vertexShader = res/shaders/textured.vert\n\
+			fragmentShader = res/shaders/textured.frag\n\
+			defines = SPECULAR; DIRECTIONAL_LIGHT_COUNT 1\n\
+		}\n\
+	}\n\
+");
+
 		}
-		else {
-			FMES(f, "colored\n\
-{\n\
+		else { // テクスチャ不使用
+
+			FMES(f, "\
 	u_diffuseColor = %.6f, %.6f, %.6f, %.6f\n\
 ", material.diffuse[0], material.diffuse[1], material.diffuse[2], material.diffuse[3]);
-		}
 
-		FMES(f, "\
-	u_specularExponent = %.6f\n\
-	renderState\n\
+			FMES(f, "\
+	technique\n\
 	{\n\
-		cullFace = %s\n\
-		depthTest = true\n\
+		pass\n\
+		{\n\
+			vertexShader = res/shaders/colored.vert\n\
+			fragmentShader = res/shaders/colored.frag\n\
+			defines = SPECULAR; DIRECTIONAL_LIGHT_COUNT 1\n\
+		}\n\
 	}\n\
-", material.spc_pow,
-	material.isDouble ? "false" : "true");
+");
+
+		}
 
 		FMES(f, "}\n");
 	}
