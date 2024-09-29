@@ -1,15 +1,33 @@
 # Metasequoia4用gpbエクスポートプラグイン
 
 ## 概要
- Metasequoia4 Windows 64bit版で使用する
+ Metasequoia 4 Windows 64bit版で使用する
 gpbファイル出力プラグインです。
-gpbファイルは Hot Soup Processor 3.6 hgimg4 での使用を想定しています。
-.materialファイルも書き出します。
+gpbファイルは Hot Soup Processor 3.6 hgimg4 で採用されている
+3Dモデルファイルです。.materialファイルも書き出します。
+
+Windows 11 64bit版の Metasequoia 4.9.0a(64bit) で
+ざっくり動作確認しています。
 
 
-## 使い方
-   ~ここを記載する。~
-   
+## インストール
+https://github.com/hta393939/metaseqtry/releases/tag/0.1.1 ページから exportgpb.0.1.1.zip をダウンロードします。
+右クリックして～のチェックをオフにします。
+
+メニューから「ヘルプ」→「プラグインについて」をクリックします。
+「プラグインについて」ダイアログの「インストール」をクリックします。
+さきほどダウンロードした exportgpb.0.1.1.zip ファイルを選択して
+「開く」をクリックします。
+
+
+
+## 出力方法
+メニューから「ファイル」→「名前をつけて保存」を選択し
+「保存」ダイアログの「ファイルの種類」で
+「HSP GPB simple(*.gpb)」を選択します。  
+名前を指定して「保存」をクリックします。  
+「GPB Export」ダイアログで「OK」をクリックしてファイル出力します。
+
 
 ## 非対応
 - 頂点カラーには非対応です。

@@ -171,6 +171,8 @@ struct GPBMaterial {
 
 	// RGBA
 	float diffuse[4];
+	float specular[3];
+	float spc_pow;
 
 	GPBMaterial() {
 		enable = true;
@@ -181,6 +183,10 @@ struct GPBMaterial {
 		diffuse[1] = 1.0f;
 		diffuse[2] = 1.0f;
 		diffuse[3] = 1.0f;
+		specular[0] = 0.0f;
+		specular[1] = 0.0f;
+		specular[2] = 0.0f;
+		spc_pow = 5.0f;
 	}
 };
 
@@ -696,6 +702,21 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 	// Load bone setting
 	LoadBoneSettingFile();
 
+	MString onlyName = MFileUtil::extractFileNameOnly(filename);
+	{
+		auto result = checkOver(onlyName);
+		if (result) {
+			MQWindow mainwin = MQWindow::GetMainWindow();
+			MString message = MString(language.Search("InvalidModelChar"))
+				+ L"\n"
+				+ filename;
+			MQDialog::MessageWarningBox(mainwin,
+				message.c_str(),
+				GetResourceString("Error"));
+			return FALSE;
+		}
+	}
+
 	MQBoneManager bone_manager(this, doc);
 	std::vector<GPBMaterial> materials;
 
@@ -876,7 +897,6 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 	MString materialPath = MFileUtil::changeExtension(filename, L".material");
 	MString csvPath = MFileUtil::changeExtension(filename, L".csv");
 
-	MString onlyName = MFileUtil::extractFileNameOnly(filename);
 	// \\ できれいにつながる
 	//MString hspPath = MFileUtil::extractDirectory(filename) + onlyName + L".hsp";
 	MString hspPath = MFileUtil::extractDirectory(contentDir.substring(0, contentDir.length() - 1)) + onlyName + L".hsp";
@@ -1109,10 +1129,10 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 
 		material.isDouble = isDouble;
 
-		float specular_color[3]; // sr, sg, sb // 光沢色
-		specular_color[0] = sqrtf(spc_col.r);
-		specular_color[1] = sqrtf(spc_col.g);
-		specular_color[2] = sqrtf(spc_col.b);
+		// sr, sg, sb // 光沢色
+		material.specular[0] = sqrtf(spc_col.r);
+		material.specular[1] = sqrtf(spc_col.g);
+		material.specular[2] = sqrtf(spc_col.b);
 
 		float ambient_color[3]; // mr, mg, mb // 環境色(ambient)
 		ambient_color[0] = amb_col.r;
@@ -1916,12 +1936,15 @@ int ExportGPBPlugin::makeMaterial(FILE* f, const std::vector<GPBMaterial>& mater
 material colored\n\
 {\n\
 	u_worldViewProjectionMatrix = WORLD_VIEW_PROJECTION_MATRIX\n\
+    u_cameraPosition = CAMERA_WORLD_POSITION\n\
+	u_inverseTransposeWorldViewMatrix = INVERSE_TRANSPOSE_WORLD_VIEW_MATRIX\n\
 	technique\n\
 	{\n\
 		pass\n\
 		{\n\
 			vertexShader = res/shaders/colored.vert\n\
 			fragmentShader = res/shaders/colored.frag\n\
+			defines = SPECULAR;DIRECTIONAL_LIGHT_COUNT 1\n\
 		}\n\
 	}\n\
 }\n\
@@ -1942,6 +1965,7 @@ material textured\n\
 		{\n\
 			vertexShader = res/shaders/textured.vert\n\
 			fragmentShader = res/shaders/textured.frag\n\
+			defines = SPECULAR;DIRECTIONAL_LIGHT_COUNT 1\n\
 		}\n\
 	}\n\
 }\n\
@@ -1957,7 +1981,6 @@ material textured\n\
 		if (material.useTexture) {
 			FMES(f, "textured\n\
 {\n\
-	u_matrixPalette = MATRIX_PALETTE\n\
 	sampler u_diffuseTexture\n\
 	{\n\
 		path = %s\n\
@@ -1975,12 +1998,14 @@ material textured\n\
 		}
 
 		FMES(f, "\
+	u_specularExponent = %.6f\n\
 	renderState\n\
 	{\n\
 		cullFace = %s\n\
 		depthTest = true\n\
 	}\n\
-", material.isDouble ? "false" : "true");
+", material.spc_pow,
+	material.isDouble ? "false" : "true");
 
 		FMES(f, "}\n");
 	}
@@ -1996,7 +2021,7 @@ int ExportGPBPlugin::makeHSP(FILE* f, const GPBBounding& bounding, const MString
 	float height = bounding.max[1] - bounding.min[1];
 	float thick = bounding.max[2] - bounding.min[2];
 	// 横長の場合のみ正確
-	float dist = fmaxf(width, height) * 0.5f / tanf(fov * 0.5f) + thick * 0.5f;
+	float dist = fmaxf(width, height) * 1.125f * 0.5f / tanf(fov * 0.5f) + thick * 0.5f;
 	FMES(f, "\
 #include \"hgimg4.as\"\n\
 ddim vals, 4\n\
