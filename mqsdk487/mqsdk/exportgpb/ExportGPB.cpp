@@ -72,6 +72,7 @@ wchar_t s_DllPath[MAX_PATH];
 #define FMES fprintf_s
 
 #define JOINTNAME "n0_Joint"
+#define ADD_SPCDEF ";SPECULAR"
 
 static bool	MQPointFuzzyEqual(MQPoint A, MQPoint B)
 {
@@ -701,6 +702,8 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 
 	// Load bone setting
 	LoadBoneSettingFile();
+
+	MString outputFiles = MString(filename);
 
 	MString onlyName = MFileUtil::extractFileNameOnly(filename);
 	{
@@ -1350,6 +1353,10 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 			if (err != 0) {
 				fhMaterial = nullptr;
 			}
+
+			if (fhMaterial) {
+				outputFiles += L"\n" + materialPath;
+			}
 		}
 	}
 	// debug
@@ -1393,6 +1400,10 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 			err = _wfopen_s(&fhHsp, hspPath.c_str(), L"w");
 			if (err != 0) {
 				fhHsp = nullptr;
+			}
+
+			if (fhHsp) {
+				outputFiles += L"\n" + hspPath;
 			}
 		}
 	}
@@ -1869,6 +1880,15 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 	if(fclose(fh) != 0){
 		return FALSE;
 	}
+	
+	{
+		MQWindow mainwin = MQWindow::GetMainWindow();
+		MString message = MString(language.Search("DoneOutput")) + L"\n" + outputFiles;
+		const auto result = MQDialog::MessageInformationBox(mainwin,
+			message.c_str(),
+			language.Search("Option"));
+	}
+
 	return TRUE;
 }
 
@@ -1970,6 +1990,8 @@ material textured\n\
 			continue;
 		}
 
+		bool use_spc = !(material.specular[0] <= 0.0f && material.specular[1] <= 0.0f && material.specular[2] <= 0.0f);
+
 		const auto name = material.convName.toAnsiString();
 		FMES(f, "material %s : %s\n{\n", name.c_str(), material.useTexture ? "textured" : "colored");
 
@@ -2003,10 +2025,10 @@ material textured\n\
 		{\n\
 			vertexShader = res/shaders/textured.vert\n\
 			fragmentShader = res/shaders/textured.frag\n\
-			defines = SPECULAR; DIRECTIONAL_LIGHT_COUNT 1\n\
+			defines = DIRECTIONAL_LIGHT_COUNT 1%s\n\
 		}\n\
 	}\n\
-");
+", use_spc ? ADD_SPCDEF : "");
 
 		}
 		else { // テクスチャ不使用
@@ -2022,10 +2044,10 @@ material textured\n\
 		{\n\
 			vertexShader = res/shaders/colored.vert\n\
 			fragmentShader = res/shaders/colored.frag\n\
-			defines = SPECULAR; DIRECTIONAL_LIGHT_COUNT 1\n\
+			defines = DIRECTIONAL_LIGHT_COUNT 1%s\n\
 		}\n\
 	}\n\
-");
+", use_spc ? ADD_SPCDEF : "");
 
 		}
 
