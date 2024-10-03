@@ -10,7 +10,7 @@
 #define MY_FILETYPE "HSP GPB simple(*.gpb)"
 #define MY_EXT "gpb"
 
-#define IDENVER "0.1.1"
+#define IDENVER "0.1.2"
 
 // $(ProjectDir)$(Platform)\$(Configuration)\
 // $(OutDir)$(TargetName)$(TargetExt)

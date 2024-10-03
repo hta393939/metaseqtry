@@ -11,23 +11,53 @@ Windows 11 64bit版の Metasequoia 4.9.0a(64bit) で
 
 
 ## インストール
-https://github.com/hta393939/metaseqtry/releases/tag/0.1.1 ページから exportgpb.0.1.1.zip をダウンロードします。
+https://github.com/hta393939/metaseqtry/releases/tag/0.1.2 ページから exportgpb.0.1.2.zip をダウンロードします。
+
 右クリックして「プロパティ」をクリックします。
 「セキュリティ」の「許可する」にチェックを入れて「OK」をクリックします。
 
 メニューから「ヘルプ」→「プラグインについて」をクリックします。
 「プラグインについて」ダイアログの「インストール」をクリックします。
-さきほどダウンロードした exportgpb.0.1.1.zip ファイルを選択して
+さきほどダウンロードした exportgpb.0.1.2.zip ファイルを選択して
 「開く」をクリックします。
+リストに Export HSP GPB simple(*.gpb) が追加されたら成功です。
 
 
-
-## 出力方法
+## エクスポート(出力)方法
 メニューから「ファイル」→「名前をつけて保存」を選択し
 「保存」ダイアログの「ファイルの種類」で
 「HSP GPB simple(*.gpb)」を選択します。  
 名前を指定して「保存」をクリックします。  
 「GPB Export」ダイアログで「OK」をクリックしてファイル出力します。
+
+
+## 推奨のファイル配置
+例えば、C:\\hsp36\\sample\\hgimg4\\res フォルダに
+モデルファイルとテクスチャファイルを配置します。  
+モデルファイルが piyo.mqoz ファイルとして
+piyo.gpb ファイルとしてエクスポートすると  
+C:\\hsp36\\sample\\hgimg4\\res\\piyo.material ファイルと  
+C:\\hsp36\\sample\\hgimg4\\piyo.hsp ファイルを
+書き出します。
+
+
+## 動作
+### material ファイルの path
+テクスチャプリフィクスに記載した内容に
+テクスチャのパスを除いたファイル名を出力します。  
+例えば、テクスチャプリフィクスが res/ で
+テクスチャ設定が fuga/hoge.png だった場合は  
+path = res/hoge.png  
+が出力されます。
+HSP3.x hgimg4 で使用する場合は
+テクスチャプリフィクスは res/ を指定することを推奨します。
+
+
+### 反射光
+反射光の色設定そのものは反映されませんが
+反射光の色が(0,0,0)以外の場合は
+反射光を有効にする材質としてmaterialファイルを出力します。  
+具体的には defines = SPECULAR;DIRECTIONAL_LIGHT_COUNT 1 が出力されます。
 
 
 ## 非対応
@@ -47,5 +77,5 @@ https://github.com/hta393939/metaseqtry/releases/tag/0.1.1 ページから expor
 
 ## 更新履歴
 
-2024-09-28: ver.0.1.0 初回リリース
+2024-10-03: ver.0.1.2 初回リリース
 
