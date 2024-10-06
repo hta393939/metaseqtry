@@ -10,7 +10,7 @@
 #define MY_FILETYPE "HSP GPB simple(*.gpb)"
 #define MY_EXT "gpb"
 
-#define IDENVER "0.1.2"
+#define IDENVER "0.2.0"
 
 // $(ProjectDir)$(Platform)\$(Configuration)\
 // $(OutDir)$(TargetName)$(TargetExt)
@@ -72,7 +72,6 @@ wchar_t s_DllPath[MAX_PATH];
 #define FMES fprintf_s
 
 #define JOINTNAME "n0_Joint"
-#define ADD_SPCDEF ";SPECULAR"
 
 static bool	MQPointFuzzyEqual(MQPoint A, MQPoint B)
 {
@@ -163,6 +162,7 @@ struct GPBMaterial {
 	// 変換後の名前
 	MString convName;
 
+	bool useLighting;
 	bool useTexture;
 	// .material に書く
 	MString orgDiffuseTexture;
@@ -179,6 +179,7 @@ struct GPBMaterial {
 		enable = true;
 		orgIndex = -1;
 		isDouble = FALSE;
+		useLighting = true;
 		useTexture = false;
 		diffuse[0] = 1.0f;
 		diffuse[1] = 1.0f;
@@ -234,7 +235,8 @@ private:
 	std::vector<BoneGroupSetting> m_BoneGroupSetting;
 	bool LoadBoneSettingFile();
 
-	int makeMaterial(FILE* fhMaterial, const std::vector<GPBMaterial>& materials);
+	int makeMaterial(FILE* fhMaterial, const std::vector<GPBMaterial>& materials,
+		const MAnsiString& option);
 	// プレビューコードを書き出す
 	int makeHSP(FILE* f, const GPBBounding& bounding, const MString& name);
 };
@@ -281,16 +283,12 @@ class GPBOptionDialog : public MQDialog
 {
 public:
 	MQCheckBox *check_visible;
-	//MQComboBox *combo_bone;
-	//MQComboBox *combo_ikend;
-	//MQComboBox *combo_facial;
+	MQComboBox *combo_bone;
 	MQEdit *edit_textureprefix;
 	//MQMemo *memo_comment; // 広いのが Memo か...
 
 	MQComboBox* combo_mtlfile;
 	MQComboBox* combo_hspfile;
-
-	//MQCheckBox* experimental;
 
 	GPBOptionDialog(int id, int parent_frame_id, ExportGPBPlugin *plugin, MLanguage& language);
 
@@ -345,7 +343,7 @@ GPBOptionDialog::GPBOptionDialog(int id, int parent_frame_id, ExportGPBPlugin *p
 	combo_hspfile->SetHintSizeRateX(8);
 	combo_hspfile->SetFillBeforeRate(1);
 
-#if 0
+
 	hframe = CreateHorizontalFrame(group);
 	CreateLabel(hframe, language.Search("Bone"));
 	this->combo_bone = CreateComboBox(hframe);
@@ -354,6 +352,8 @@ GPBOptionDialog::GPBOptionDialog(int id, int parent_frame_id, ExportGPBPlugin *p
 	combo_bone->SetHintSizeRateX(8);
 	combo_bone->SetFillBeforeRate(1);
 
+
+#if 0
 	hframe = CreateHorizontalFrame(group);
 	CreateLabel(hframe, language.Search("IKEnd"));
 	this->combo_ikend = CreateComboBox(hframe);
@@ -361,16 +361,6 @@ GPBOptionDialog::GPBOptionDialog(int id, int parent_frame_id, ExportGPBPlugin *p
 	combo_ikend->AddItem(language.Search("Enable"));
 	combo_ikend->SetHintSizeRateX(8);
 	combo_ikend->SetFillBeforeRate(1);
-
-	// モーフの出力可否のGUI作成
-	hframe = CreateHorizontalFrame(group);
-	CreateLabel(hframe, language.Search("Facial"));
-	this->combo_facial = CreateComboBox(hframe);
-	combo_facial->AddItem(language.Search("Disable"), STRUCT_SIMPLE);
-	combo_facial->AddItem(language.Search("Enable"), STRUCT_OBJECT);
-	combo_facial->AddItem(language.Search("Enable"), STRUCT_SKIN);
-	combo_facial->SetHintSizeRateX(8);
-	combo_facial->SetFillBeforeRate(1);
 #endif
 
 
@@ -404,17 +394,21 @@ struct CreateDialogOptionParam
 	MLanguage *lang;
 
 	bool visible_only;
-
+	/// <summary>
+	/// ボーンが1つ以上かどうか
+	/// </summary>
 	bool bone_exists;
-	bool facial_exists;
+
 	int struct_mode;
-	bool output_bone;
+	/// <summary>
+	/// UI上の 1: 有効, 0: 無効
+	/// </summary>
+	int output_bone;
 
 	int mtlfile;
 	MYSTR texture_prefix;
 	int hspfile;
 
-	//bool experimental;
 	//MAnsiString comment;
 };
 
@@ -443,6 +437,8 @@ static void CreateDialogOption(bool init, MQFileDialogCallbackParam *param, void
 
 		dialog->combo_hspfile->SetEnabled(true);
 		dialog->combo_hspfile->SetCurrentIndex(option->hspfile);
+
+		dialog->combo_bone->SetEnabled(false);
 	}
 	else
 	{
@@ -454,6 +450,8 @@ static void CreateDialogOption(bool init, MQFileDialogCallbackParam *param, void
 		//option->modelname = getMultiBytesSubstring(MString(option->dialog->edit_modelname->GetText()).toAnsiString(), 20);
 #endif
 		option->texture_prefix = option->dialog->edit_textureprefix->GetText();
+
+		option->output_bone = option->dialog->combo_bone->GetCurrentIndex();
 
 		delete option->dialog;
 	}
@@ -511,11 +509,15 @@ struct PMDBoneParam {
 	MQMatrix mtx;
 	MQMatrix base_mtx;
 	UINT parent;
+	/// <summary>
+	/// 子ボーンの個数
+	/// </summary>
 	int child_num;
 	MQPoint org_pos;
 	MQPoint def_pos;
 	//MQPoint scale;
 	MString name;
+	// ダミーならtrue
 	bool dummy;
 	std::vector<UINT> children;
 
@@ -525,8 +527,6 @@ struct PMDBoneParam {
 	MString name_en;
 	int root_group;
 	int group;
-
-	bool movable;
 	UINT group_id;
 	UINT tip_id;
 
@@ -538,8 +538,6 @@ struct PMDBoneParam {
 		pmd_index = -1;
 		root_group = -1;
 		group = -1;
-
-		movable = false;
 		group_id = 0;
 		tip_id = 0;
 	}
@@ -581,17 +579,6 @@ struct GPBNode {
 	}
 };
 
-
-//Facial
-enum MorphType
-{
-	MORPH_BASE = 0,
-	MORPH_BROW,
-	MORPH_EYE,
-	MORPH_LIP,
-	MORPH_OTHER,
-};
-
 enum CodeType
 {
 	CODE_UTF8 = 0,
@@ -629,27 +616,6 @@ enum AttrType
 	ATTR_TEXCOORD7 = 15,
 };
 
-struct PMDMorphInputParam
-{
-	MQObject	base;
-	std::vector<std::pair<MQObject, MorphType> >	target;
-};
-
-static bool containsTargetObject(std::vector<PMDMorphInputParam> &list, MQObject obj)
-{
-	assert(obj != nullptr);
-
-	auto end = list.end();
-	for(auto ite = list.begin(); ite != end; ++ite)
-	{
-		for(auto tIte = ite->target.begin(); tIte != ite->target.end(); ++tIte)
-			if(tIte->first == obj)
-				return true;
-	}
-
-	return false;
-}
-
 /// <summary>
 /// 最大と最小から中心と半径を計算する
 /// </summary>
@@ -664,7 +630,7 @@ static void calcRadius(GPBBounding& bounding) {
 }
 
 /// <summary>
-/// U+007E より大きいコードが存在したら1を返す
+/// U+007F より大きいコードが存在したら1を返す
 /// </summary>
 /// <param name="text"></param>
 /// <returns></returns>
@@ -722,6 +688,9 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 
 	MQBoneManager bone_manager(this, doc);
 	std::vector<GPBMaterial> materials;
+
+	// ボーン処理をトータルで有効にするかどうか
+	bool outputBone = false;
 
 	int indexMesh = 0;
 	int indexScene = 1;
@@ -787,7 +756,7 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 	std::map<UINT,std::wstring> groups;
 	std::vector<UINT> group_id;
 	int group_num = bone_manager.EnumGroups(group_id);
-	if(group_num > 0){
+	if(group_num > 0) {
 		for(int i = 0;i < group_num;i++){
 			std::wstring name;
 			bone_manager.GetGroupName(group_id[i], name);
@@ -796,22 +765,24 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 			groups.insert(std::make_pair(group_id[i], name));
 		}
 	}
-	// Query a number of bones
+	// Query a number of bones ボーン数
 	int bone_num = bone_manager.GetBoneNum();
 	int bone_object_num = bone_manager.GetSkinObjectNum();
-	// Enum bones
+
+	// Enum bones ボーンのIDリスト
 	std::vector<UINT> bone_id;
 	std::vector<PMDBoneParam> bone_param;
-	if(bone_num > 0){
-		bone_id.resize(bone_num);
-		bone_manager.EnumBoneID(bone_id);
+	if (bone_num > 0) {
+		bone_id.resize(bone_num); // 領域確保する
+		bone_manager.EnumBoneID(bone_id); // IDリストを取得
 
-		bone_param.resize(bone_num);
-		for(int i=0; i<bone_num; i++){
+		bone_param.resize(bone_num); // 領域確保する
+		for (int i = 0; i < bone_num; i++) {
 			bone_param[i].id = bone_id[i];
 
 			std::wstring name;
 			bone_manager.GetParent(bone_id[i], bone_param[i].parent);
+			// 子ボーン個数
 			bone_manager.GetChildNum(bone_id[i], bone_param[i].child_num);
 			bone_manager.GetBasePos(bone_id[i], bone_param[i].org_pos);
 			bone_manager.GetDeformPos(bone_id[i], bone_param[i].def_pos);
@@ -822,19 +793,10 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 			bone_manager.GetDummy(bone_id[i], bone_param[i].dummy);
 
 			bone_param[i].name = MString(name);
-			{
-				MQBoneManager::LINK_PARAM param;
-				bone_manager.GetLink(bone_id[i], param);
-				//bone_param[i].link_id = param.link_bone_id;
-				//bone_param[i].link_rate = (int)param.rotate;
-			}
-			bone_manager.GetMovable(bone_id[i], bone_param[i].movable);
 			bone_manager.GetGroupID(bone_id[i], bone_param[i].group_id);
 			{
 				std::vector<UINT> children;
 				bone_manager.GetChildren(bone_id[i], children);
-				if(!children.empty())
-					bone_param[i].tip_id = children.front();
 			}
 		}
 	}
@@ -851,7 +813,7 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 	option.mtlfile = FILEOUT_CONFIRM;
 
 	option.bone_exists = (bone_num > 0);
-	option.output_bone = true;
+	option.output_bone = 0;
 
 	option.hspfile = FILEOUT_CONFIRM;
 	option.struct_mode = STRUCT_SIMPLE;
@@ -866,6 +828,7 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 		setting->Load("MtlFile", option.mtlfile, option.mtlfile);
 		setting->Load("HspFile", option.hspfile, option.hspfile);
 		setting->Load("TexturePrefix", option.texture_prefix, option.texture_prefix);
+		setting->Load("OutputBone", option.output_bone, option.output_bone);
 	}
 	MQFileDialogInfo dlginfo;
 	memset(&dlginfo, 0, sizeof(dlginfo));
@@ -890,7 +853,14 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 		setting->Save("MtlFile", option.mtlfile);
 		setting->Save("HspFile", option.hspfile);
 		setting->Save("TexturePrefix", option.texture_prefix);
+		setting->Save("OutputBone", option.output_bone);
 		CloseSetting(setting);
+	}
+
+	outputBone = false;
+	if (!outputBone) { // 無効化する
+		bone_num = 0;
+		bone_object_num = 0;
 	}
 
 	//// 処理後半
@@ -951,7 +921,7 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 			vert_coord.push_back(uv);
 			total_vert_num++;
 
-			if(total_vert_num > 65535){
+			if(total_vert_num > 65535) {
 				MQWindow mainwin = MQWindow::GetMainWindow();
 				MQDialog::MessageWarningBox(mainwin,
 					language.Search("TooManyVertices"),
@@ -964,7 +934,7 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 		}
 	}
 
-#if 0
+#if 1
 	std::map<UINT, int> bone_id_index;
 	// Initialize bones.
 	if(bone_num > 0)
@@ -974,9 +944,9 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 		}
 
 		// Check the parent
-		for(int i=0; i<bone_num; i++){
-			if(bone_param[i].parent != 0){
-				if(bone_id_index.end() == bone_id_index.find(bone_param[i].parent)){
+		for (int i=0; i<bone_num; i++) {
+			if (bone_param[i].parent != 0) {
+				if (bone_id_index.end() == bone_id_index.find(bone_param[i].parent)) {
 					assert(0);
 					bone_param[i].parent = 0;
 				}
@@ -988,28 +958,28 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 			std::list<PMDBoneParam> bone_param_temp(bone_param.begin(), bone_param.end());
 			bone_param.clear();
 			bone_id_index.clear();
-			while(!bone_param_temp.empty()){
+			while (!bone_param_temp.empty()) {
 				bool done = false;
-				for(auto it = bone_param_temp.begin(); it != bone_param_temp.end(); ){
-					if((*it).parent != 0){
-						if(bone_id_index.end() != bone_id_index.find((*it).parent)){
-							if(bone_param[bone_id_index[(*it).parent]].tip_id == 0 || bone_id_index[(*it).parent] != bone_param.size()-1){
+				for (auto it = bone_param_temp.begin(); it != bone_param_temp.end(); ) {
+					if ((*it).parent != 0) {
+						if(bone_id_index.end() != bone_id_index.find((*it).parent)) {
+							if(bone_param[bone_id_index[(*it).parent]].tip_id == 0 || bone_id_index[(*it).parent] != bone_param.size()-1) {
 								bone_id_index[(*it).id] = (int)bone_param.size();
 								bone_param.push_back(*it);
 								it = bone_param_temp.erase(it);
 								done = true;
-							}else if(bone_param[bone_id_index[(*it).parent]].tip_id == (*it).id){
+							} else if(bone_param[bone_id_index[(*it).parent]].tip_id == (*it).id) {
 								bone_id_index[(*it).id] = (int)bone_param.size();
 								bone_param.push_back(*it);
 								it = bone_param_temp.erase(it);
 								done = true;
-							}else{
+							} else {
 								++it; // try next
 							}
-						}else{
+						} else {
 							++it; // try next
 						}
-					}else{
+					} else {
 						bone_id_index[(*it).id] = (int)bone_param.size();
 						bone_param.push_back(*it);
 						it = bone_param_temp.erase(it);
@@ -1018,8 +988,8 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 				}
 
 				assert(done);
-				if(!done){
-					for(auto it = bone_param_temp.begin(); it != bone_param_temp.end(); ++it){
+				if(!done) {
+					for (auto it = bone_param_temp.begin(); it != bone_param_temp.end(); ++it){
 						bone_id_index[(*it).id] = (int)bone_param.size();
 						(*it).parent = 0;
 						bone_param.push_back(*it);
@@ -1029,12 +999,12 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 			}
 		}
 
-		// Enum children
-		for(int i=0; i<bone_num; i++){
-			if(bone_param[i].parent != 0){
-				if(bone_id_index.end() != bone_id_index.find(bone_param[i].parent)){
+		// Enum children. 親が有効だった場合に自分を親の子リストに追加する
+		for (int i=0; i<bone_num; i++) {
+			if (bone_param[i].parent != 0) {
+				if (bone_id_index.end() != bone_id_index.find(bone_param[i].parent)) {
 					bone_param[bone_id_index[bone_param[i].parent]].children.push_back(i);
-				}else{
+				} else {
 					assert(0);
 					bone_param[i].parent = 0;
 				}
@@ -1042,21 +1012,21 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 		}
 	}
 	int pmdbone_num = 0;
-	for(int i=0; i<bone_num; i++){
+	for (int i=0; i<bone_num; i++) {
 		// Determine PMD bone index.
-		bone_param[i].pmd_index = pmdbone_num++;
+		bone_param[i].pmd_index = pmdbone_num++; // 先に代入して加算
 	}
-	for(int i=0; i<bone_num; i++){
-		if(bone_param[i].tip_id==0)continue;
+	for (int i=0; i<bone_num; i++) {
+		if (bone_param[i].tip_id==0) continue;
 		UINT tip_parent_id = bone_param[bone_id_index[bone_param[i].tip_id]].parent;
 		assert(bone_param[i].id == tip_parent_id);
 	}
 
-	for(int i=0; i<bone_num; i++){
-		// name
+	for(int i=0; i<bone_num; i++) {
+		// name. en もこれでいいのか??
 		bone_param[i].name_jp = bone_param[i].name;
 		bone_param[i].name_en = bone_param[i].name;
-		for(auto it = m_BoneNameSetting.begin(); it != m_BoneNameSetting.end(); ++it){
+		for(auto it = m_BoneNameSetting.begin(); it != m_BoneNameSetting.end(); ++it) {
 			if((*it).jp == bone_param[i].name || (*it).en == bone_param[i].name){
 				bone_param[i].name_jp = (*it).jp;
 				bone_param[i].name_en = (*it).en;
@@ -1065,7 +1035,7 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 		}
 	}
 	std::map<int,std::pair<MString,MString> > group_names;
-	for(auto it = groups.begin();it != groups.end();it++){
+	for (auto it = groups.begin();it != groups.end();it++) {
 		group_names[it->first] = std::make_pair(it->second, it->second);
 		for(auto nit = m_BoneGroupSetting.begin(); nit != m_BoneGroupSetting.end(); ++nit){
 			if((*nit).jp == it->second || (*nit).en == it->second){
@@ -1075,6 +1045,8 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 		}
 	}
 #endif
+
+	MAnsiString keepName = "unknown";
 
 	for (int m = 0; m <= numMat; ++m) {
 		GPBMaterial material;
@@ -1111,16 +1083,23 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 					material.useTexture = true;
 				}
 
-				/*
+				// MQPlugin.h
 				int shader = mat->GetShader();
-				if (shader == MQMATERIAL_SHADER_HLSL) {
+				switch (shader) {
+				case MQMATERIAL_SHADER_CONSTANT:
+					material.useLighting = false;
+					break;
+				case MQMATERIAL_SHADER_HLSL:
 					MAnsiString shader_name = mat->GetShaderName();
-					if (shader_name == "pmd") {
+					keepName = shader_name;
+					// Constant ->"", Phong -> "", "pmd", "vrm", "glTF", "PBRTransparent"
 						//toon = mat->GetShaderParameterIntValue("Toon", 0);
-						//edge = mat->GetShaderParameterBoolValue("Edge", 0);
+					if (shader_name == "vrm") {
+						material.useLighting = false;
 					}
+					break;
 				}
-				*/
+
 			}
 		}
 		else {
@@ -1307,8 +1286,8 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 	FILE *fh;
 	errno_t err = _wfopen_s(&fh, filename, L"wb");
 	//errno_t err = fopen_s(&fh, filename, "w");
-	if(err != 0){
-		for(size_t i=0; i<expobjs.size(); i++){
+	if(err != 0) {
+		for(size_t i=0; i<expobjs.size(); i++) {
 			delete expobjs[i];
 		}
 		return FALSE;
@@ -1457,18 +1436,19 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 		GPBBounding bounding;
 
 		// 属性タイプと数値数の配列 position, 3 など
-		DWORD attrNum = 3;
+		DWORD attrNum = outputBone ? 5 : 3;
 		fwrite(&attrNum, sizeof(DWORD), 1, fh);
-		DWORD attr[6] = {
+		DWORD attr[10] = {
 			ATTR_POSITION, 3,
 			ATTR_NORMAL, 3,
 			ATTR_TEXCOORD0, 2,
-			//ATTR_BLENDWEIGHTS, 4,
-			//ATTR_BLENDINDICES, 4,
+			ATTR_BLENDWEIGHTS, 4,
+			ATTR_BLENDINDICES, 4,
 		};
 		fwrite(&attr, sizeof(DWORD), attrNum * 2, fh);
 
-		DWORD vertexByteCount = total_vert_num * (3 + 3 + 2) * sizeof(float);
+		DWORD attrFloatNum = 3 + 3 + 2 + (outputBone ? (4 + 4) : 0);
+		DWORD vertexByteCount = total_vert_num * attrFloatNum * sizeof(float);
 		fwrite(&vertexByteCount, sizeof(DWORD), 1, fh);
 
 		for (int j = 0; j < total_vert_num; ++j) {
@@ -1500,8 +1480,8 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 			uv[0] = vert_coord[j].u;
 			uv[1] = 1.0f - vert_coord[j].v;
 
-#if 0
-			UINT vert_bone_id[16];
+
+			UINT vert_bone_id[16]; // metaseq は最大16?
 			float weights[16];
 			int weight_num = 0;
 			if (bone_num > 0) { // ボーンが1個以上存在する場合
@@ -1556,8 +1536,8 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 				bone_weight = 1.0f;
 			}
 			indices[0] = bone_index[0];
-			//weight[0] = bone_weight;
-#endif
+			weight[0] = bone_weight;
+
 
 			for (int index = 0; index < 3; ++index) {
 				bounding.max[index] = fmaxf(bounding.max[index], pos[index]);
@@ -1568,8 +1548,10 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 			fwrite(&nrm, sizeof(float), 3, fh);
 			fwrite(&uv, sizeof(float), 2, fh);
 
-			//fwrite(&weight, sizeof(float), 4, fh);
-			//fwrite(&indices, sizeof(float), 4, fh);
+			if (outputBone) {
+				fwrite(&weight, sizeof(float), 4, fh);
+				fwrite(&indices, sizeof(float), 4, fh);
+			}
 		}
 
 		calcRadius(bounding);
@@ -1695,7 +1677,8 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 
 	//// 材質の書き出し
 	if (fhMaterial) {
-		this->makeMaterial(fhMaterial, materials);
+		keepName = "";
+		this->makeMaterial(fhMaterial, materials, keepName);
 	}
 	if (fhHsp) {
 		MString name = MString(L"res/") + MFileUtil::extractFileNameOnly(filename);
@@ -1960,19 +1943,24 @@ bool ExportGPBPlugin::LoadBoneSettingFile()
 }
 
 
-int ExportGPBPlugin::makeMaterial(FILE* f, const std::vector<GPBMaterial>& materials) {
+int ExportGPBPlugin::makeMaterial(FILE* f, const std::vector<GPBMaterial>& materials,
+	const MAnsiString& option) {
+
+	if (option.length() > 0) {
+		FMES(f, "// %s\n", option.c_str());
+	}
 
 	FMES(f, "\
 material colored\n\
 {\n\
 	u_worldViewProjectionMatrix = WORLD_VIEW_PROJECTION_MATRIX\n\
-    u_cameraPosition = CAMERA_WORLD_POSITION\n\
+	u_cameraPosition = CAMERA_WORLD_POSITION\n\
 	u_inverseTransposeWorldViewMatrix = INVERSE_TRANSPOSE_WORLD_VIEW_MATRIX\n\
 }\n\
 material textured\n\
 {\n\
 	u_worldViewProjectionMatrix = WORLD_VIEW_PROJECTION_MATRIX\n\
-    u_cameraPosition = CAMERA_WORLD_POSITION\n\
+	u_cameraPosition = CAMERA_WORLD_POSITION\n\
 	u_inverseTransposeWorldViewMatrix = INVERSE_TRANSPOSE_WORLD_VIEW_MATRIX\n\
 	sampler u_diffuseTexture\n\
 	{\n\
@@ -1991,6 +1979,14 @@ material textured\n\
 		}
 
 		bool use_spc = !(material.specular[0] <= 0.0f && material.specular[1] <= 0.0f && material.specular[2] <= 0.0f);
+
+		MString def = MString();
+		if (material.useLighting) {
+			def += L"DIRECTIONAL_LIGHT_COUNT 1";
+			if (use_spc) {
+				def += L";SPECULAR";
+			}
+		}
 
 		const auto name = material.convName.toAnsiString();
 		FMES(f, "material %s : %s\n{\n", name.c_str(), material.useTexture ? "textured" : "colored");
@@ -2025,10 +2021,10 @@ material textured\n\
 		{\n\
 			vertexShader = res/shaders/textured.vert\n\
 			fragmentShader = res/shaders/textured.frag\n\
-			defines = DIRECTIONAL_LIGHT_COUNT 1%s\n\
+			defines = %s\n\
 		}\n\
 	}\n\
-", use_spc ? ADD_SPCDEF : "");
+", def.toAnsiString().c_str());
 
 		}
 		else { // テクスチャ不使用
@@ -2044,10 +2040,10 @@ material textured\n\
 		{\n\
 			vertexShader = res/shaders/colored.vert\n\
 			fragmentShader = res/shaders/colored.frag\n\
-			defines = DIRECTIONAL_LIGHT_COUNT 1%s\n\
+			defines = %s\n\
 		}\n\
 	}\n\
-", use_spc ? ADD_SPCDEF : "");
+", def.toAnsiString().c_str());
 
 		}
 

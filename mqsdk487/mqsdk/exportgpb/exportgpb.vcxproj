@@ -200,12 +200,6 @@
     <ClCompile Include="tinyxml2.cpp" />
   </ItemGroup>
   <ItemGroup>
-    <None Include="ExportPMD.resource.xml">
-      <SubType>Designer</SubType>
-    </None>
-    <None Include="ExportPMDBoneSetting.xml">
-      <SubType>Designer</SubType>
-    </None>
     <None Include="readme.md" />
   </ItemGroup>
   <ItemGroup>

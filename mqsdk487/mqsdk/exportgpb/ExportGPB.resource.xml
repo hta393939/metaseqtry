@@ -3,6 +3,7 @@
   <resource language="Japanese">
     <string id="Option">GPBオプション</string>
     <string id="VisibleOnly">可視オブジェクトのみ</string>
+    <string id="Bone">ボーンの出力</string>
     <string id="Disable">しない</string>
     <string id="Enable">する</string>
     <string id="MtlFile">.materialファイル出力</string>
@@ -26,6 +27,7 @@
   <resource language="English" default="1">
     <string id="Option">GPB options</string>
     <string id="VisibleOnly">Visible only</string>
+    <string id="Bone">Bone</string>
     <string id="Disable">Off</string>
     <string id="Enable">On</string>
     <string id="MtlFile">.material file</string>
