@@ -11,14 +11,14 @@ Windows 11 64bit版の Metasequoia 4.9.0a(64bit) で
 
 
 ## インストール
-https://github.com/hta393939/metaseqtry/releases/tag/0.1.2 ページから exportgpb.0.1.2.zip をダウンロードします。
+https://github.com/hta393939/metaseqtry/releases/tag/0.2.1 ページから exportgpb.0.2.1.zip をダウンロードします。
 
 右クリックして「プロパティ」をクリックします。
 「セキュリティ」の「許可する」にチェックを入れて「OK」をクリックします。
 
 メニューから「ヘルプ」→「プラグインについて」をクリックします。
 「プラグインについて」ダイアログの「インストール」をクリックします。
-さきほどダウンロードした exportgpb.0.1.2.zip ファイルを選択して
+さきほどダウンロードした exportgpb.0.2.1.zip ファイルを選択して
 「開く」をクリックします。
 リストに Export HSP GPB simple(*.gpb) が追加されたら成功です。
 
@@ -53,10 +53,18 @@ HSP3.x hgimg4 で使用する場合は
 テクスチャプリフィクスは res/ を指定することを推奨します。
 
 
+### ライティング
+Constant, VRM1.0 MToon 材質では
+ライティングを行わない .material ファイルを書き出します。
+具体的には defines = DIRECTIONAL_LIGHT_COUNT 1 を出力しません。  
+それ以外の材質ではライティング設定で出力します。
+具体的には defines = DIRECTIONAL_LIGHT_COUNT 1 を出力します。
+
 ### 反射光
+ライティングを行う材質の場合に
 反射光の色設定そのものは反映されませんが
 反射光の色が(0,0,0)以外の場合は
-反射光を有効にする材質としてmaterialファイルを出力します。  
+反射光を有効にする材質として .materialファイルを出力します。  
 具体的には defines = SPECULAR;DIRECTIONAL_LIGHT_COUNT 1 が出力されます。
 
 
@@ -77,5 +85,6 @@ HSP3.x hgimg4 で使用する場合は
 
 ## 更新履歴
 
+2024-10-06: ver.0.2.1 ライティング無し条件を追加
 2024-10-03: ver.0.1.2 初回リリース
 

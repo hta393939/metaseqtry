@@ -10,7 +10,7 @@
 #define MY_FILETYPE "HSP GPB simple(*.gpb)"
 #define MY_EXT "gpb"
 
-#define IDENVER "0.2.0"
+#define IDENVER "0.2.1"
 
 // $(ProjectDir)$(Platform)\$(Configuration)\
 // $(OutDir)$(TargetName)$(TargetExt)
@@ -278,12 +278,15 @@ const char *ExportGPBPlugin::EnumFileExt(int index)
 	return NULL;
 }
 
+#define BONEUI 0
 
 class GPBOptionDialog : public MQDialog
 {
 public:
 	MQCheckBox *check_visible;
+#if (BONEUI!=0)
 	MQComboBox *combo_bone;
+#endif
 	MQEdit *edit_textureprefix;
 	//MQMemo *memo_comment; // 広いのが Memo か...
 
@@ -343,26 +346,16 @@ GPBOptionDialog::GPBOptionDialog(int id, int parent_frame_id, ExportGPBPlugin *p
 	combo_hspfile->SetHintSizeRateX(8);
 	combo_hspfile->SetFillBeforeRate(1);
 
-
+#if (BONEUI!=0)
 	hframe = CreateHorizontalFrame(group);
 	CreateLabel(hframe, language.Search("Bone"));
+
 	this->combo_bone = CreateComboBox(hframe);
 	combo_bone->AddItem(language.Search("Disable"));
 	combo_bone->AddItem(language.Search("Enable"));
 	combo_bone->SetHintSizeRateX(8);
 	combo_bone->SetFillBeforeRate(1);
-
-
-#if 0
-	hframe = CreateHorizontalFrame(group);
-	CreateLabel(hframe, language.Search("IKEnd"));
-	this->combo_ikend = CreateComboBox(hframe);
-	combo_ikend->AddItem(language.Search("Disable"));
-	combo_ikend->AddItem(language.Search("Enable"));
-	combo_ikend->SetHintSizeRateX(8);
-	combo_ikend->SetFillBeforeRate(1);
 #endif
-
 
 #if 0
 	CreateLabel(group, language.Search("Comment"));
@@ -438,7 +431,9 @@ static void CreateDialogOption(bool init, MQFileDialogCallbackParam *param, void
 		dialog->combo_hspfile->SetEnabled(true);
 		dialog->combo_hspfile->SetCurrentIndex(option->hspfile);
 
+#if (BONEUI!=0)
 		dialog->combo_bone->SetEnabled(false);
+#endif
 	}
 	else
 	{
@@ -451,7 +446,10 @@ static void CreateDialogOption(bool init, MQFileDialogCallbackParam *param, void
 #endif
 		option->texture_prefix = option->dialog->edit_textureprefix->GetText();
 
+		option->output_bone = 0;
+#if (BONEUI!=0)
 		option->output_bone = option->dialog->combo_bone->GetCurrentIndex();
+#endif
 
 		delete option->dialog;
 	}
