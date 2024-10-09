@@ -232,10 +232,11 @@ struct GPBRef {
 };
 
 struct GPBBoneParam {
+	// ボーンID. 0 は無効のような扱い
 	UINT id;
 	MQMatrix mtx;
 	MQMatrix base_mtx;
-	// bone_num での親ボーンインデックス
+	// 親ボーンID. 0 だと親は無い
 	UINT parent;
 	/// <summary>
 	/// 子ボーンの個数. bone_manager から取得する
@@ -257,7 +258,7 @@ struct GPBBoneParam {
 
 	MString name_jp;
 	MString name_en;
-
+	// 先ボーンID
 	UINT tip_id;
 
 	GPBBoneParam() {
@@ -840,6 +841,7 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 			bone_param[i].id = bone_id[i];
 
 			std::wstring name;
+			// ボーンID指定して受け取り変数を指定する
 			bone_manager.GetParent(bone_id[i], bone_param[i].parent);
 			// 子ボーン個数
 			bone_manager.GetChildNum(bone_id[i], bone_param[i].child_num);
@@ -852,8 +854,8 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 			bone_manager.GetDummy(bone_id[i], bone_param[i].dummy);
 
 			bone_param[i].name = MString(name);
-				//std::vector<UINT> children;
-				//bone_manager.GetChildren(bone_id[i], children);
+			//std::vector<UINT> children;
+			//bone_manager.GetChildren(bone_id[i], children);
 
 		}
 	}
@@ -992,6 +994,7 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 	}
 
 #if 1
+	// ID から bone_num の index を引く
 	std::map<UINT, int> bone_id_index;
 	// Initialize bones.
 	if(bone_num > 0)
@@ -1003,6 +1006,7 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 		// Check the parent
 		for (int i=0; i<bone_num; i++) {
 			if (bone_param[i].parent != 0) {
+				// キーで探して見つからなかったら 0 を代入
 				if (bone_id_index.end() == bone_id_index.find(bone_param[i].parent)) {
 					assert(0);
 					bone_param[i].parent = 0;
@@ -1018,12 +1022,14 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 			while (!bone_param_temp.empty()) {
 				bool done = false;
 				for (auto it = bone_param_temp.begin(); it != bone_param_temp.end(); ) {
-					if ((*it).parent != 0) {
-						if(bone_id_index.end() != bone_id_index.find((*it).parent)) {
-							if(bone_param[bone_id_index[(*it).parent]].tip_id == 0
+					if ((*it).parent != 0) { // 親がある場合
+						if (bone_id_index.end() != bone_id_index.find((*it).parent)) {
+							if (bone_param[bone_id_index[(*it).parent]].tip_id == 0
 									|| bone_id_index[(*it).parent] != bone_param.size()-1) {
 								bone_id_index[(*it).id] = (int)bone_param.size();
+								// 追加する
 								bone_param.push_back(*it);
+								// temp からは削除する
 								it = bone_param_temp.erase(it);
 								done = true;
 							} else if(bone_param[bone_id_index[(*it).parent]].tip_id == (*it).id) {
@@ -1046,8 +1052,8 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 				}
 
 				assert(done);
-				if(!done) {
-					for (auto it = bone_param_temp.begin(); it != bone_param_temp.end(); ++it){
+				if (!done) {
+					for (auto it = bone_param_temp.begin(); it != bone_param_temp.end(); ++it) {
 						bone_id_index[(*it).id] = (int)bone_param.size();
 						(*it).parent = 0;
 						bone_param.push_back(*it);
@@ -1069,13 +1075,16 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 			}
 		}
 	}
+
 	int pmdbone_num = 0;
 	for (int i=0; i<bone_num; i++) {
 		// Determine PMD bone index.
 		bone_param[i].pmd_index = pmdbone_num++; // 先に代入して加算
 	}
+
 	for (int i=0; i<bone_num; i++) {
 		if (bone_param[i].tip_id==0) continue;
+		// 先ボーンのIDから bone_id_index で引いて，親が戻ってきていたら正常
 		UINT tip_parent_id = bone_param[bone_id_index[bone_param[i].tip_id]].parent;
 		assert(bone_param[i].id == tip_parent_id);
 	}
@@ -1084,6 +1093,7 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 		// name. en もこれでいいのか??
 		bone_param[i].name_jp = bone_param[i].name;
 		bone_param[i].name_en = bone_param[i].name;
+		// 設定を全部見て設定の jp or en のどちらかと一致したら設定で上書きする
 		for(auto it = m_BoneNameSetting.begin(); it != m_BoneNameSetting.end(); ++it) {
 			if((*it).jp == bone_param[i].name || (*it).en == bone_param[i].name){
 				bone_param[i].name_jp = (*it).jp;
@@ -1570,6 +1580,7 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 					bone_weight = max_weight1 / total_weights;
 				}
 				else {
+					// index が一致したら1つに統合する
 					bone_weight = 1.0f;
 				}
 			}
