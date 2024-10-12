@@ -129,6 +129,19 @@ static MString GetResourceDir()
 }
 #endif
 
+
+// @see Node.h#L58
+enum GPBNodeType {
+	GPBNODE_NODE = 1,
+	GPBNODE_JOINT = 2,
+};
+
+// @see Transform.h#L89
+enum AnimationAttr {
+	ANIMATE_ROTATE_TRANSLATE = 16,
+	ANIMATE_SCALE_ROTATE_TRANSLATE = 17,
+};
+
 struct GPBBounding {
 	float min[3];
 	float max[3];
@@ -192,6 +205,7 @@ struct GPBMaterial {
 	}
 };
 
+/*
 struct GPBNode {
 	BYTE type; // node, joint
 	MQMatrix mtx;
@@ -205,6 +219,7 @@ struct GPBNode {
 		name = MAnsiString("");
 	}
 };
+*/
 
 /// <summary>
 /// 参照テーブル構造体
@@ -251,24 +266,33 @@ struct GPBBoneParam {
 	MString name;
 	// ダミーならtrue
 	bool dummy;
-	/// bone_num に対する index
+	/// bone_num に対する index. not bone ID
 	std::vector<UINT> children;
-
-	int pmd_index;
+	/// <summary>
+	/// 親ボーン関係ソート後のボーン配列でのインデックス
+	/// </summary>
+	int sortedIndex;
 
 	MString name_jp;
 	MString name_en;
-	// 先ボーンID
-	UINT tip_id;
+
+	/// <summary>
+	/// refTable における対応インデックス
+	/// </summary>
+	int refIndex;
+
+	/// 常に GPBNODE_JOINT
+	BYTE nodeType;
 
 	GPBBoneParam() {
 		id = 0;
 		parent = 0;
 		child_num = 0;
 		dummy = false;
-		pmd_index = -1;
+		sortedIndex = -1;
 
-		tip_id = 0;
+		refIndex = -1;
+		nodeType = GPBNODE_JOINT;
 	}
 };
 
@@ -312,7 +336,8 @@ private:
 	bool LoadBoneSettingFile();
 
 	int makeMaterial(FILE* fhMaterial, const std::vector<GPBMaterial>& materials,
-		const MAnsiString& option);
+		const MAnsiString& option,
+		int jointNum);
 	// プレビューコードを書き出す
 	int makeHSP(FILE* f, const GPBBounding& bounding, const MString& name);
 
@@ -323,10 +348,10 @@ private:
 	/// <param name="node"></param>
 	/// <returns></returns>
 	int writeJoint(FILE* fh,
-		GPBNode& node,
 		std::vector<GPBBoneParam>& bone_param,
 		std::vector<GPBRef>& refTable,
-		int index);
+		int index,
+		std::map<UINT,int>& bone_id_index);
 };
 
 
@@ -541,17 +566,7 @@ static void CreateDialogOption(bool init, MQFileDialogCallbackParam *param, void
 }
 
 
-// @see Node.h#L58
-enum NodeType {
-	NODE_NODE = 1,
-	NODE_JOINT = 2,
-};
 
-// @see Transform.h#L89
-enum AnimationAttr {
-	ANIMATE_ROTATE_TRANSLATE = 16,
-	ANIMATE_SCALE_ROTATE_TRANSLATE = 17,
-};
 
 #pragma pack(push,1)
 
@@ -655,10 +670,10 @@ static int checkOver(const MString& text) {
 
 
 int ExportGPBPlugin::writeJoint(FILE* fh,
-	GPBNode& node,
 	std::vector<GPBBoneParam>& bone_param,
 	std::vector<GPBRef>& refTable,
-	int index) {
+	int index,
+	std::map<UINT, int>& bone_index_id) {
 	float material[16] = {
 		1.0f, 0.0f, 0.0f, 0.0f,
 		0.0f, 1.0f, 0.0f, 0.0f,
@@ -666,36 +681,42 @@ int ExportGPBPlugin::writeJoint(FILE* fh,
 		0.0f, 0.0f, 0.0f, 1.0f,
 	};
 
+	GPBBoneParam& curBone = bone_param[index];
 
 	{
 		auto offset = ftell(fh);
-		DWORD nodeType = NODE_JOINT;
-		refTable[index].offset = offset;
-		refTable[index].name = node.name;
+		int refIndex = curBone.refIndex;
+		refTable[refIndex].offset = offset;
+		refTable[refIndex].name = curBone.name.toAnsiString();
 
-		GPBNode* pParent = nullptr;
+		GPBBoneParam* pParent = nullptr;
+		if (curBone.parent != 0) {
+			pParent = &bone_param[bone_index_id[curBone.parent]];
+		}
 		if (pParent) { // 前進差分
-			material[12] = node.org_pos.x - pParent->org_pos.x;
-			material[13] = node.org_pos.y - pParent->org_pos.y;
-			material[14] = node.org_pos.z - pParent->org_pos.z;
+			material[12] = curBone.org_pos.x - pParent->org_pos.x;
+			material[13] = curBone.org_pos.y - pParent->org_pos.y;
+			material[14] = curBone.org_pos.z - pParent->org_pos.z;
 		}
 
+		DWORD nodeType = GPBNODE_JOINT;
 		fwrite(&nodeType, sizeof(DWORD), 1, fh);
 		fwrite(&material, sizeof(float), 16, fh);
 
-		MAnsiString parent((pParent != nullptr) ? pParent->name : "");
-		DWORD parentByteNum = parent.length();
+		MString parentName((pParent != nullptr) ? pParent->name : L"");
+		MAnsiString parentNameStr = parentName.toAnsiString();
+		DWORD parentByteNum = parentNameStr.length();
 		fwrite(&parentByteNum, sizeof(DWORD), 1, fh);
-		fwrite(parent.c_str(), sizeof(char), parentByteNum, fh);
+		fwrite(parentNameStr.c_str(), sizeof(char), parentByteNum, fh);
 
 		// 子ジョイント数
-		DWORD childNum = node.children.size();
+		DWORD childNum = curBone.children.size();
 		fwrite(&childNum, sizeof(DWORD), 1, fh);
 		for (int i = 0; i < childNum; ++i) {
-			// TODO: node も index も違う
-			auto childNode = node.children[i];
-
-			this->writeJoint(fh, childNode, bone_param, refTable, index);
+			this->writeJoint(fh,
+				bone_param, refTable,
+				curBone.children[i],
+				bone_index_id);
 		}
 
 		BYTE camlight[2] = { 0, 0 }; // camera, light
@@ -769,11 +790,10 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 	int indexScene = 1;
 	int indexAnimations = 2;
 	int indexNode = 3;
-	int indexJoint = 4;
 	std::vector<GPBRef> refTable;
-	for (int i = 0; i < 5; ++i) {
+	for (int i = 0; i < 4; ++i) {
 		GPBRef ref;
-		ref.offset = 0x363534; // for check
+		ref.offset = 0x00363534; // for check
 		switch (i) {
 		case 0:
 			ref.type = REF_MESH;
@@ -791,11 +811,15 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 			ref.type = REF_NODE;
 			ref.name = MAnsiString("n0");
 			break;
-		case 4:
-			ref.type = REF_NODE;
-			ref.name = MAnsiString(JOINTNAME);
-			break;
 		}
+		refTable.push_back(ref);
+	}
+
+	if (!outputBone) {
+		GPBRef ref;
+		ref.offset = 0x00363534; // for check
+		ref.type = REF_NODE;
+		ref.name = MAnsiString(JOINTNAME);
 		refTable.push_back(ref);
 	}
 
@@ -805,22 +829,24 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 	for (int i = 0; i <= 2; ++i) {
 		GPBKey keyval;
 		keyval.msec = 30 * 1000 * i;
-		switch (i) {
-		case 0:
-			keyval.p[0] = -1.0f;
-			keyval.p[1] = 1.0f;
-			keyval.p[2] = 0.0f;
-			break;
-		case 1:
-			keyval.p[0] = 0.0f;
-			keyval.p[1] = 0.0f;
-			keyval.p[2] = 0.5f;
-			break;
-		case 2:
-			keyval.p[0] = 1.0f;
-			keyval.p[1] = 1.0f;
-			keyval.p[2] = 1.0f;
-			break;
+		if (!outputBone) {
+			switch (i) {
+			case 0:
+				keyval.p[0] = -1.0f;
+				keyval.p[1] = 1.0f;
+				keyval.p[2] = 0.0f;
+				break;
+			case 1:
+				keyval.p[0] = 0.0f;
+				keyval.p[1] = 0.0f;
+				keyval.p[2] = 0.5f;
+				break;
+			case 2:
+				keyval.p[0] = 1.0f;
+				keyval.p[1] = 1.0f;
+				keyval.p[2] = 1.0f;
+				break;
+			}
 		}
 		keyvals.push_back(keyval);
 	}
@@ -856,7 +882,6 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 			bone_param[i].name = MString(name);
 			//std::vector<UINT> children;
 			//bone_manager.GetChildren(bone_id[i], children);
-
 		}
 	}
 
@@ -1014,6 +1039,7 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 			}
 		}
 
+#if 0
 		// Sort by hierarchy
 		{
 			std::list<GPBBoneParam> bone_param_temp(bone_param.begin(), bone_param.end());
@@ -1024,26 +1050,39 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 				for (auto it = bone_param_temp.begin(); it != bone_param_temp.end(); ) {
 					if ((*it).parent != 0) { // 親がある場合
 						if (bone_id_index.end() != bone_id_index.find((*it).parent)) {
+							// 親が bone_id_index から見つかる場合
+
 							if (bone_param[bone_id_index[(*it).parent]].tip_id == 0
 									|| bone_id_index[(*it).parent] != bone_param.size()-1) {
+								// 親の先ボーンがそもそも無いか
+								// ～の場合は追加する
+
 								bone_id_index[(*it).id] = (int)bone_param.size();
-								// 追加する
 								bone_param.push_back(*it);
-								// temp からは削除する
 								it = bone_param_temp.erase(it);
 								done = true;
+
 							} else if(bone_param[bone_id_index[(*it).parent]].tip_id == (*it).id) {
+								// 親のチップ先IDが自分のIDの場合は追加する
+
 								bone_id_index[(*it).id] = (int)bone_param.size();
 								bone_param.push_back(*it);
 								it = bone_param_temp.erase(it);
 								done = true;
+
 							} else {
 								++it; // try next
 							}
+
 						} else {
+							// 親が bone_id_index にまだ追加されてない場合は候補ではない
 							++it; // try next
 						}
+
 					} else {
+						// 親が無い場合
+
+						// インデックスを指定して追加して元から削除して1個以上あるフラグを立てる
 						bone_id_index[(*it).id] = (int)bone_param.size();
 						bone_param.push_back(*it);
 						it = bone_param_temp.erase(it);
@@ -1053,6 +1092,7 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 
 				assert(done);
 				if (!done) {
+					// 辻褄があわず1個も見つからなかった場合，残り全部の親を無効化して全部登録
 					for (auto it = bone_param_temp.begin(); it != bone_param_temp.end(); ++it) {
 						bone_id_index[(*it).id] = (int)bone_param.size();
 						(*it).parent = 0;
@@ -1063,7 +1103,53 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 			}
 		}
 
-		// Enum children. 親が有効だった場合に自分を親の子リストに追加する
+#else
+		{ // 親参照がある順に並べる
+			std::list<GPBBoneParam> bone_param_temp(bone_param.begin(), bone_param.end());
+			bone_param.clear();
+			bone_id_index.clear();
+			while (!bone_param_temp.empty()) {
+				bool done = false;
+				for (auto it = bone_param_temp.begin(); it != bone_param_temp.end(); ) {
+					if ((*it).parent != 0) { // 親がある場合
+						if (bone_id_index.end() != bone_id_index.find((*it).parent)) {
+							// 親が bone_id_index から見つかる場合
+							bone_id_index[(*it).id] = (int)bone_param.size();
+							bone_param.push_back(*it);
+							it = bone_param_temp.erase(it);
+							done = true;
+						}
+						else {
+							// 親が bone_id_index にまだ追加されてない場合は候補ではない
+							++it; // try next
+						}
+					}
+					else {
+						// 親が無い場合
+
+						// インデックスを指定して追加して元から削除して1個以上あるフラグを立てる
+						bone_id_index[(*it).id] = (int)bone_param.size();
+						bone_param.push_back(*it);
+						it = bone_param_temp.erase(it);
+						done = true;
+					}
+				}
+
+				assert(done);
+				if (!done) {
+					// 辻褄があわず1個も見つからなかった場合，残り全部の親を無効化して全部登録
+					for (auto it = bone_param_temp.begin(); it != bone_param_temp.end(); ++it) {
+						bone_id_index[(*it).id] = (int)bone_param.size();
+						(*it).parent = 0;
+						bone_param.push_back(*it);
+					}
+					break;
+				}
+			}
+		}
+#endif
+
+		// Enum children. 親が有効だった場合に自分を親の子リストにソート後インデックスを追加する
 		for (int i=0; i<bone_num; i++) {
 			if (bone_param[i].parent != 0) {
 				if (bone_id_index.end() != bone_id_index.find(bone_param[i].parent)) {
@@ -1074,21 +1160,35 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 				}
 			}
 		}
+
+		for (int i = 0; i < bone_num; ++i) {
+			bone_param[i].sortedIndex = i;
+
+			GPBRef ref;
+			ref.type = REF_NODE;
+			ref.name = bone_param[i].name_en.toAnsiString();
+			bone_param[i].refIndex = refTable.size();
+			refTable.push_back(ref);
+
+			// name. en もこれでいいのか??
+			bone_param[i].name_jp = bone_param[i].name;
+			bone_param[i].name_en = bone_param[i].name;
+			// 設定を全部見て設定の jp or en のどちらかと一致したら設定で上書きする
+			for (auto it = m_BoneNameSetting.begin(); it != m_BoneNameSetting.end(); ++it) {
+				if ((*it).jp == bone_param[i].name || (*it).en == bone_param[i].name) {
+					bone_param[i].name_jp = (*it).jp;
+					bone_param[i].name_en = (*it).en;
+					break;
+				}
+			}
+		}
+
+		//for (int i = 0; i < bone_num; i++) {
+		//	bone_param[i].sortedIndex = i;
+		//}
 	}
 
-	int pmdbone_num = 0;
-	for (int i=0; i<bone_num; i++) {
-		// Determine PMD bone index.
-		bone_param[i].pmd_index = pmdbone_num++; // 先に代入して加算
-	}
-
-	for (int i=0; i<bone_num; i++) {
-		if (bone_param[i].tip_id==0) continue;
-		// 先ボーンのIDから bone_id_index で引いて，親が戻ってきていたら正常
-		UINT tip_parent_id = bone_param[bone_id_index[bone_param[i].tip_id]].parent;
-		assert(bone_param[i].id == tip_parent_id);
-	}
-
+	/*
 	for (int i=0; i<bone_num; i++) {
 		// name. en もこれでいいのか??
 		bone_param[i].name_jp = bone_param[i].name;
@@ -1102,6 +1202,7 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 			}
 		}
 	}
+	*/
 
 #endif
 
@@ -1147,6 +1248,7 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 				switch (shader) {
 				case MQMATERIAL_SHADER_CONSTANT:
 					material.useLighting = false;
+					dif = 1.0f;
 					break;
 				case MQMATERIAL_SHADER_HLSL:
 					MAnsiString shader_name = mat->GetShaderName();
@@ -1191,7 +1293,6 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 		//memcpy(texture_file_name, texture_str.c_str(), texture_str.length());
 		//fwrite(texture_file_name, 20, 1, fh);
 
-		// TODO: 
 		material.orgDiffuseTexture = texture;
 
 		material.convName = material.orgName;
@@ -1466,7 +1567,7 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 	checkValues.push_back(0x39393901);
 
 	DWORD refNum = refTable.size();
-	fwrite(&refNum, 4, 1, fh);
+	fwrite(&refNum, sizeof(DWORD), 1, fh);
 	for (auto& ref : refTable) // 書き込み有り
 	{
 		DWORD type = ref.type;
@@ -1574,8 +1675,8 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 				// ルート側のノードにウェイトを割り当てる
 				int bi1 = bone_id_index[vert_bone_id[max_bone1]];
 				int bi2 = bone_id_index[vert_bone_id[max_bone2]];
-				bone_index[0] = bone_param[bi1].pmd_index;
-				bone_index[1] = bone_param[bi2].pmd_index;
+				bone_index[0] = bone_param[bi1].sortedIndex;
+				bone_index[1] = bone_param[bi2].sortedIndex;
 				if (bone_index[0] != bone_index[1]) {
 					bone_weight = max_weight1 / total_weights;
 				}
@@ -1586,7 +1687,7 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 			}
 			else if (weight_num == 1) { // 1個の場合
 				int bi = bone_id_index[vert_bone_id[0]];
-				bone_index[0] = bone_param[bi].pmd_index;
+				bone_index[0] = bone_param[bi].sortedIndex;
 				bone_index[1] = bone_index[0];
 				bone_weight = 1.0f;
 			}
@@ -1738,7 +1839,8 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 	//// 材質の書き出し
 	if (fhMaterial) {
 		keepName = "";
-		this->makeMaterial(fhMaterial, materials, keepName);
+		std::vector<MString> defs;
+		this->makeMaterial(fhMaterial, materials, keepName, bone_num);
 	}
 	if (fhHsp) {
 		MString name = MString(L"res/") + MFileUtil::extractFileNameOnly(filename);
@@ -1758,30 +1860,13 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 		0.0f, 0.0f, 0.0f, 1.0f,
 	};
 
-	DWORD nodeNum = 2;
+	DWORD nodeNum = 1 + (outputBone ? bone_num : 1);
 	fwrite(&nodeNum, sizeof(DWORD), 1, fh);
-	for (int i = 0; i < nodeNum; ++i) {
-		if (i == 1 && outputBone) {
-			// TODO: 未実装
-			GPBNode node;
-			int index = 0;
-			this->writeJoint(fh, node, bone_param, refTable, index);
-			continue;
-		}
 
-
+	{
 		auto offset = ftell(fh);
-		DWORD nodeType = NODE_NODE;
-		switch (i) {
-		case 0:
-			nodeType = NODE_NODE;
-			refTable[indexNode].offset = offset;
-			break;
-		case 1:
-			nodeType = NODE_JOINT;
-			refTable[indexJoint].offset = offset;
-			break;
-		}
+		DWORD nodeType = GPBNODE_NODE;
+		refTable[indexNode].offset = offset;
 
 		fwrite(&nodeType, sizeof(DWORD), 1, fh);
 		fwrite(&identity, sizeof(float), 16, fh);
@@ -1799,51 +1884,81 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 
 		// model
 		DWORD zero = 0;
-		switch (i) {
-		case 0:
+
+		MAnsiString meshName("#n0_Mesh");
+		DWORD meshNameByteNum = meshName.length();
+		fwrite(&meshNameByteNum, sizeof(DWORD), 1, fh);
+		fwrite(meshName.c_str(), sizeof(char), meshNameByteNum, fh);
+
+		BYTE hasSkin = 1;
+		fwrite(&hasSkin, sizeof(BYTE), 1, fh);
+		if (hasSkin) {
+			fwrite(&identity, sizeof(float), 16, fh); // bindShape
+
+			DWORD jointCount = 1;
+			fwrite(&jointCount, sizeof(DWORD), 1, fh);
 			{
-				MAnsiString meshName("#n0_Mesh");
-				DWORD meshNameByteNum = meshName.length();
-				fwrite(&meshNameByteNum, sizeof(DWORD), 1, fh);
-				fwrite(meshName.c_str(), sizeof(char), meshNameByteNum, fh);
-
-				BYTE hasSkin = 1;
-				fwrite(&hasSkin, sizeof(BYTE), 1, fh);
-				if (hasSkin) {
-					fwrite(&identity, sizeof(float), 16, fh); // bindShape
-
-					DWORD jointCount = 1;
-					fwrite(&jointCount, sizeof(DWORD), 1, fh);
-					{
-						MAnsiString boneName("#n0_Joint");
-						DWORD boneNameByteNum = boneName.length();
-						fwrite(&boneNameByteNum, sizeof(DWORD), 1, fh);
-						fwrite(boneName.c_str(), sizeof(char), boneNameByteNum, fh);
-					}
-
-					DWORD inverseNum = jointCount * 16;
-					fwrite(&inverseNum, sizeof(DWORD), 1, fh);
-					fwrite(&identity, sizeof(float), 16, fh);
-				}
-
-				fwrite(&enableMaterialNum, sizeof(DWORD), 1, fh);
-				for (const auto& material : materials) {
-					if (!material.enable) {
-						continue;
-					}
-					MAnsiString materialName(material.convName.toAnsiString());
-					DWORD nameByteNum = materialName.length();
-					fwrite(&nameByteNum, sizeof(DWORD), 1, fh);
-					fwrite(materialName.c_str(), sizeof(char), nameByteNum, fh);
-				}
+				MAnsiString boneName("#n0_Joint");
+				DWORD boneNameByteNum = boneName.length();
+				fwrite(&boneNameByteNum, sizeof(DWORD), 1, fh);
+				fwrite(boneName.c_str(), sizeof(char), boneNameByteNum, fh);
 			}
-			break;
-		case 1:
-			fwrite(&zero, sizeof(DWORD), 1, fh);
-			break;
+
+			DWORD inverseNum = jointCount * 16;
+			fwrite(&inverseNum, sizeof(DWORD), 1, fh);
+			fwrite(&identity, sizeof(float), 16, fh);
+		}
+
+		fwrite(&enableMaterialNum, sizeof(DWORD), 1, fh);
+		for (const auto& material : materials) {
+			if (!material.enable) {
+				continue;
+			}
+			MAnsiString materialName(material.convName.toAnsiString());
+			DWORD nameByteNum = materialName.length();
+			fwrite(&nameByteNum, sizeof(DWORD), 1, fh);
+			fwrite(materialName.c_str(), sizeof(char), nameByteNum, fh);
 		}
 
 	}
+
+	if (outputBone) {
+
+		for (int i = 0; i < bone_num; ++i) {
+			if (bone_param[i].parent != 0) {
+				continue;
+			}
+			this->writeJoint(fh,
+				bone_param, refTable, i,
+				bone_id_index);
+		}
+
+	} else {
+
+		auto offset = ftell(fh);
+		DWORD nodeType = GPBNODE_JOINT;
+		// TODO: 4 でいいのか??
+		refTable[4].offset = offset;
+
+		fwrite(&nodeType, sizeof(DWORD), 1, fh);
+		fwrite(&identity, sizeof(float), 16, fh);
+
+		MAnsiString parent("");
+		DWORD parentByteNum = parent.length();
+		fwrite(&parentByteNum, sizeof(DWORD), 1, fh);
+		fwrite(parent.c_str(), sizeof(char), parentByteNum, fh);
+
+		DWORD childNum = 0;
+		fwrite(&childNum, sizeof(DWORD), 1, fh);
+
+		BYTE camlight[2] = { 0, 0 }; // camera, light
+		fwrite(&camlight, sizeof(BYTE), 2, fh);
+
+		// model
+		DWORD zero = 0;
+		fwrite(&zero, sizeof(DWORD), 1, fh);
+	}
+
 
 	DWORD cameraNameLength = scene.cameraName.length();
 	fwrite(&cameraNameLength, sizeof(DWORD), 1, fh);
@@ -1997,7 +2112,8 @@ bool ExportGPBPlugin::LoadBoneSettingFile()
 
 
 int ExportGPBPlugin::makeMaterial(FILE* f, const std::vector<GPBMaterial>& materials,
-	const MAnsiString& option) {
+	const MAnsiString& option,
+	int jointNum) {
 
 	if (option.length() > 0) {
 		FMES(f, "// %s\n", option.c_str());
@@ -2033,12 +2149,27 @@ material textured\n\
 
 		bool use_spc = !(material.specular[0] <= 0.0f && material.specular[1] <= 0.0f && material.specular[2] <= 0.0f);
 
-		MString def = MString();
+		std::vector<MString> defs;
+		if (jointNum > 0) {
+			defs.push_back(L"SKINNING");
+			defs.push_back(MString::format(L"SKINNING_JOINT_COUNT %d", jointNum));
+		}
 		if (material.useLighting) {
-			def += L"DIRECTIONAL_LIGHT_COUNT 1";
+			defs.push_back(L"DIRECTIONAL_LIGHT_COUNT 1");
 			if (use_spc) {
-				def += L";SPECULAR";
+				defs.push_back(L"SPECULAR");
 			}
+		}
+
+		MString def = MString();
+		for (int i = 0; i < defs.size(); ++i) {
+			if (i != 0) {
+				def += L";";
+			}
+			def += defs[i];
+		}
+		if (def.length() > 0) {
+			def = L"defines = " + def;
 		}
 
 		const auto name = material.convName.toAnsiString();
@@ -2074,7 +2205,7 @@ material textured\n\
 		{\n\
 			vertexShader = res/shaders/textured.vert\n\
 			fragmentShader = res/shaders/textured.frag\n\
-			defines = %s\n\
+			%s\n\
 		}\n\
 	}\n\
 ", def.toAnsiString().c_str());
@@ -2093,7 +2224,7 @@ material textured\n\
 		{\n\
 			vertexShader = res/shaders/colored.vert\n\
 			fragmentShader = res/shaders/colored.frag\n\
-			defines = %s\n\
+			%s\n\
 		}\n\
 	}\n\
 ", def.toAnsiString().c_str());
@@ -2115,14 +2246,31 @@ int ExportGPBPlugin::makeHSP(FILE* f, const GPBBounding& bounding, const MString
 	float thick = bounding.max[2] - bounding.min[2];
 	// 横長の場合のみ正確
 	float dist = fmaxf(width, height) * 1.125f * 0.5f / tanf(fov * 0.5f) + thick * 0.5f;
+
 	FMES(f, "\
 #include \"hgimg4.as\"\n\
 ddim vals, 4\n\
 vals(0) = %.6f, %.6f, %.6f, %.6f\n\
+",
+bounding.center[0], bounding.center[1], bounding.center[2], dist);
+
+	FMES(f, "\
+name = \"%s\"\n\
+verstr = \"%s\"\n\
+bone_name = \"%s\"\n\
+",
+name.toAnsiString().c_str(), IDENVER, "root");
+
+	if (false) {
+		FMES(f, "\n\
+");
+	}
+
+	FMES(f, "\
 w = ginfo(12)\n\
 h = ginfo(13)\n\
 setcls 1, 0xf0f0ff\n\
-gpload id, \"%s\"\n\
+gpload id, name\n\
 gpnull camera_id\n\
 far = vals(3) * 2.0\n\
 if far < 768.0 : far = 768.0\n\
@@ -2132,17 +2280,19 @@ setpos camera_id, vals(0), vals(1), vals(2) + vals(3)\n\
 gplookat camera_id, vals(0), vals(1), vals(2)\n\
 repeat\n\
   redraw 0\n\
+  if 0 {\n\
+    gpnodeinfo result, id, GPNODEINFO_NODE, bone_name\n\
+    setangy result, M_PI * 30.0 / 180.0, 0.0, 0.0\n\
+  }\n\
   gpdraw\n\
   pos 8, 8\n\
-  mes \"%s\"\n\
+  mes verstr\n\
   if id < 0 : mes \"gpload error\"\n\
   redraw 1\n\
   await 1000 / 60\n\
 loop\n\
-",
-		bounding.center[0], bounding.center[1], bounding.center[2], dist,
-		name.toAnsiString().c_str(),
-		IDENVER);
+");
+
 	return 0;
 }
 
