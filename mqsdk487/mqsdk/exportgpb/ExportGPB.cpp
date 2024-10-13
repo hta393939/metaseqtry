@@ -335,8 +335,9 @@ private:
 	std::vector<BoneNameSetting> m_BoneNameSetting;
 	bool LoadBoneSettingFile();
 
-	int makeMaterial(FILE* fhMaterial, const std::vector<GPBMaterial>& materials,
-		const MAnsiString& option,
+	int makeMaterial(FILE* fhMaterial,
+		const std::vector<GPBMaterial>& materials,
+		const MString& option,
 		int jointNum);
 	// プレビューコードを書き出す
 	int makeHSP(FILE* f, const GPBBounding& bounding, const MString& name);
@@ -391,13 +392,13 @@ const char *ExportGPBPlugin::EnumFileExt(int index)
 	return NULL;
 }
 
-#define BONEUI 0
+#define BONE_UI 1
 
 class GPBOptionDialog : public MQDialog
 {
 public:
 	MQCheckBox *check_visible;
-#if (BONEUI!=0)
+#if (BONE_UI!=0)
 	MQComboBox *combo_bone;
 #endif
 	MQEdit *edit_textureprefix;
@@ -456,7 +457,7 @@ GPBOptionDialog::GPBOptionDialog(int id, int parent_frame_id, ExportGPBPlugin *p
 	combo_hspfile->SetHintSizeRateX(8);
 	combo_hspfile->SetFillBeforeRate(1);
 
-#if (BONEUI!=0)
+#if (BONE_UI!=0)
 	hframe = CreateHorizontalFrame(group);
 	CreateLabel(hframe, language.Search("Bone"));
 
@@ -541,8 +542,8 @@ static void CreateDialogOption(bool init, MQFileDialogCallbackParam *param, void
 		dialog->combo_hspfile->SetEnabled(true);
 		dialog->combo_hspfile->SetCurrentIndex(option->hspfile);
 
-#if (BONEUI!=0)
-		dialog->combo_bone->SetEnabled(false);
+#if (BONE_UI!=0)
+		dialog->combo_bone->SetEnabled(option->bone_exists);
 #endif
 	}
 	else
@@ -557,7 +558,7 @@ static void CreateDialogOption(bool init, MQFileDialogCallbackParam *param, void
 		option->texture_prefix = option->dialog->edit_textureprefix->GetText();
 
 		option->output_bone = 0;
-#if (BONEUI!=0)
+#if (BONE_UI!=0)
 		option->output_bone = option->dialog->combo_bone->GetCurrentIndex();
 #endif
 
@@ -780,6 +781,8 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 		}
 	}
 
+	MString keepName = L"unknown";
+
 	MQBoneManager bone_manager(this, doc);
 	std::vector<GPBMaterial> materials;
 
@@ -815,13 +818,7 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 		refTable.push_back(ref);
 	}
 
-	if (!outputBone) {
-		GPBRef ref;
-		ref.offset = 0x00363534; // for check
-		ref.type = REF_NODE;
-		ref.name = MAnsiString(JOINTNAME);
-		refTable.push_back(ref);
-	}
+
 
 	GPBScene scene;
 	std::vector<GPBKey> keyvals;
@@ -941,11 +938,20 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 		CloseSetting(setting);
 	}
 
-	outputBone = false;
+	outputBone = (option.output_bone != 0);
 	if (!outputBone) { // 無効化する
 		bone_num = 0;
 		bone_object_num = 0;
 	}
+
+	if (!outputBone) {
+		GPBRef ref;
+		ref.offset = 0x00363534; // for check
+		ref.type = REF_NODE;
+		ref.name = MAnsiString(JOINTNAME);
+		refTable.push_back(ref);
+	}
+
 
 	//// 処理後半
 
@@ -1164,12 +1170,6 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 		for (int i = 0; i < bone_num; ++i) {
 			bone_param[i].sortedIndex = i;
 
-			GPBRef ref;
-			ref.type = REF_NODE;
-			ref.name = bone_param[i].name_en.toAnsiString();
-			bone_param[i].refIndex = refTable.size();
-			refTable.push_back(ref);
-
 			// name. en もこれでいいのか??
 			bone_param[i].name_jp = bone_param[i].name;
 			bone_param[i].name_en = bone_param[i].name;
@@ -1181,11 +1181,20 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 					break;
 				}
 			}
+
+			GPBRef ref;
+			ref.type = REF_NODE;
+			ref.name = bone_param[i].name_en.toAnsiString();
+			bone_param[i].refIndex = refTable.size();
+			refTable.push_back(ref);
 		}
 
-		//for (int i = 0; i < bone_num; i++) {
-		//	bone_param[i].sortedIndex = i;
-		//}
+		{
+			keepName += MString::format(L", refTable, %d, %d, %s",
+				refTable.size(),
+				bone_param.size(),
+				outputBone ? L"true" : L"false");
+		}
 	}
 
 	/*
@@ -1205,8 +1214,6 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 	*/
 
 #endif
-
-	MAnsiString keepName = "unknown";
 
 	for (int m = 0; m <= numMat; ++m) {
 		GPBMaterial material;
@@ -1252,7 +1259,6 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 					break;
 				case MQMATERIAL_SHADER_HLSL:
 					MAnsiString shader_name = mat->GetShaderName();
-					keepName = shader_name;
 					// Constant ->"", Phong -> "", "pmd", "vrm", "glTF", "PBRTransparent"
 						//toon = mat->GetShaderParameterIntValue("Toon", 0);
 					if (shader_name == "vrm") {
@@ -1571,6 +1577,7 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 	for (auto& ref : refTable) // 書き込み有り
 	{
 		DWORD type = ref.type;
+		// この時点のオフセットはダミー
 		DWORD offset = ref.offset;
 		// バイト 名前
 		MAnsiString name = ref.name;
@@ -1832,15 +1839,15 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 				//MAnsiString subname = getMultiBytesSubstring(bone_param[i].name_en.toAnsiString(), 20);
 				//memset(bone_name, 0, 20);
 				//memcpy(bone_name, subname.c_str(), subname.length());
-
-		//MAnsiString n = MAnsiString::format("toon%02d.bmp", i+1);
 #endif
 
 	//// 材質の書き出し
 	if (fhMaterial) {
-		keepName = "";
+		//keepName = L"";
 		std::vector<MString> defs;
-		this->makeMaterial(fhMaterial, materials, keepName, bone_num);
+		this->makeMaterial(fhMaterial, materials,
+			keepName,
+			bone_num);
 	}
 	if (fhHsp) {
 		MString name = MString(L"res/") + MFileUtil::extractFileNameOnly(filename);
@@ -1946,7 +1953,7 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 	}
 
 	if (outputBone) {
-
+		// 結果的に rootJointNum だけ採用される
 		for (int i = 0; i < bone_num; ++i) {
 			if (bone_param[i].parent != 0) {
 				continue;
@@ -1955,7 +1962,6 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 				bone_param, refTable, i,
 				bone_id_index);
 		}
-
 	} else {
 
 		auto offset = ftell(fh);
@@ -2136,12 +2142,13 @@ bool ExportGPBPlugin::LoadBoneSettingFile()
 }
 
 
-int ExportGPBPlugin::makeMaterial(FILE* f, const std::vector<GPBMaterial>& materials,
-	const MAnsiString& option,
+int ExportGPBPlugin::makeMaterial(FILE* f,
+	const std::vector<GPBMaterial>& materials,
+	const MString& option,
 	int jointNum) {
 
 	if (option.length() > 0) {
-		FMES(f, "// %s\n", option.c_str());
+		FMES(f, "// %s\n", option.toAnsiString().c_str());
 	}
 
 	FMES(f, "\
@@ -2198,11 +2205,18 @@ material textured\n\
 		}
 
 		const auto name = material.convName.toAnsiString();
-		FMES(f, "material %s : %s\n{\n", name.c_str(), material.useTexture ? "textured" : "colored");
+		FMES(f, "material %s : %s\n{\n",
+			name.c_str(), material.useTexture ? "textured" : "colored");
 
 		FMES(f, "\
 	u_specularExponent = %.6f\n\
 ", material.spc_pow);
+
+		if (jointNum > 0) {
+			FMES(f, "\
+	u_matrixPalette = MATRIX_PALETTE\n\
+");
+		}
 
 		FMES(f, "\
 	renderState\n\
@@ -2274,15 +2288,15 @@ int ExportGPBPlugin::makeHSP(FILE* f, const GPBBounding& bounding, const MString
 
 	FMES(f, "\
 #include \"hgimg4.as\"\n\
-ddim vals, 4\n\
-vals(0) = %.6f, %.6f, %.6f, %.6f\n\
+	ddim vals, 4\n\
+	vals(0) = %.6f, %.6f, %.6f, %.6f\n\
 ",
 bounding.center[0], bounding.center[1], bounding.center[2], dist);
 
 	FMES(f, "\
-name = \"%s\"\n\
-verstr = \"%s\"\n\
-bone_name = \"%s\"\n\
+	name = \"%s\"\n\
+	verstr = \"%s\"\n\
+	bone_name = \"%s\"\n\
 ",
 name.toAnsiString().c_str(), IDENVER, "root");
 
@@ -2292,30 +2306,30 @@ name.toAnsiString().c_str(), IDENVER, "root");
 	}
 
 	FMES(f, "\
-w = ginfo(12)\n\
-h = ginfo(13)\n\
-setcls 1, 0xf0f0ff\n\
-gpload id, name\n\
-gpnull camera_id\n\
-far = vals(3) * 2.0\n\
-if far < 768.0 : far = 768.0\n\
-gpcamera camera_id, 45, double(w) / double(h), 0.002, far\n\
-gpusecamera camera_id\n\
-setpos camera_id, vals(0), vals(1), vals(2) + vals(3)\n\
-gplookat camera_id, vals(0), vals(1), vals(2)\n\
-repeat\n\
-  redraw 0\n\
-  if 0 {\n\
-    gpnodeinfo result, id, GPNODEINFO_NODE, bone_name\n\
-    setangy result, M_PI * 30.0 / 180.0, 0.0, 0.0\n\
-  }\n\
-  gpdraw\n\
-  pos 8, 8\n\
-  mes verstr\n\
-  if id < 0 : mes \"gpload error\"\n\
-  redraw 1\n\
-  await 1000 / 60\n\
-loop\n\
+	w = ginfo(12)\n\
+	h = ginfo(13)\n\
+	setcls 1, 0xf0f0ff\n\
+	gpload id, name\n\
+	gpnull camera_id\n\
+	far = vals(3) * 2.0\n\
+	if far < 768.0 : far = 768.0\n\
+	gpcamera camera_id, 45, double(w) / double(h), 0.002, far\n\
+	gpusecamera camera_id\n\
+	setpos camera_id, vals(0), vals(1), vals(2) + vals(3)\n\
+	gplookat camera_id, vals(0), vals(1), vals(2)\n\
+*main\n\
+	redraw 0\n\
+	if 0 {\n\
+		gpnodeinfo result, id, GPNODEINFO_NODE, bone_name\n\
+		setangy result, M_PI * 30.0 / 180.0, 0.0, 0.0\n\
+	}\n\
+	gpdraw\n\
+	pos 8, 8\n\
+	mes verstr\n\
+	if id < 0 : mes \"gpload error\"\n\
+	redraw 1\n\
+	await 1000 / 60\n\
+	goto *main\n\
 ");
 
 	return 0;
