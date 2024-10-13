@@ -10,7 +10,7 @@
 #define MY_FILETYPE "HSP GPB simple(*.gpb)"
 #define MY_EXT "gpb"
 
-#define IDENVER "0.3.0"
+#define IDENVER "0.3.1"
 
 // $(ProjectDir)$(Platform)\$(Configuration)\
 // $(OutDir)$(TargetName)$(TargetExt)
@@ -2150,11 +2150,11 @@ name.toAnsiString().c_str(), IDENVER);
 	gplookat camera_id, vals(0), vals(1), vals(2)\n\
 *main\n\
 	getreq time, SYSREQ_TIMER\n\
-	sn = sin(double(time \\ 2000) * M_PI)\n\
+	val = sin(double(time \\ 10000) / 10000.0 * M_PI * 2.0) * 0.5\n\
 	redraw 0\n\
 	if strlen(bone_name) {\n\
 		gpnodeinfo result, id, GPNODEINFO_NODE, bone_name\n\
-		setangy result, sn, sn, sn\n\
+		setangy result, val, val, val\n\
 	}\n\
 	gpdraw\n\
 	pos 8, 8\n\
