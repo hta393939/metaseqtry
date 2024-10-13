@@ -378,15 +378,11 @@ const char *ExportGPBPlugin::EnumFileExt(int index)
 	return NULL;
 }
 
-#define BONE_UI 1
-
 class GPBOptionDialog : public MQDialog
 {
 public:
 	MQCheckBox *check_visible;
-#if (BONE_UI!=0)
 	MQComboBox *combo_bone;
-#endif
 	MQEdit *edit_textureprefix;
 	//MQMemo *memo_comment; // 広いのが Memo か...
 
@@ -443,7 +439,6 @@ GPBOptionDialog::GPBOptionDialog(int id, int parent_frame_id, ExportGPBPlugin *p
 	combo_hspfile->SetHintSizeRateX(8);
 	combo_hspfile->SetFillBeforeRate(1);
 
-#if (BONE_UI!=0)
 	hframe = CreateHorizontalFrame(group);
 	CreateLabel(hframe, language.Search("Bone"));
 
@@ -452,7 +447,6 @@ GPBOptionDialog::GPBOptionDialog(int id, int parent_frame_id, ExportGPBPlugin *p
 	combo_bone->AddItem(language.Search("Enable"));
 	combo_bone->SetHintSizeRateX(8);
 	combo_bone->SetFillBeforeRate(1);
-#endif
 
 #if 0
 	CreateLabel(group, language.Search("Comment"));
@@ -528,9 +522,8 @@ static void CreateDialogOption(bool init, MQFileDialogCallbackParam *param, void
 		dialog->combo_hspfile->SetEnabled(true);
 		dialog->combo_hspfile->SetCurrentIndex(option->hspfile);
 
-#if (BONE_UI!=0)
 		dialog->combo_bone->SetEnabled(option->bone_exists);
-#endif
+		dialog->combo_bone->SetCurrentIndex(option->output_bone);
 	}
 	else
 	{
@@ -542,11 +535,7 @@ static void CreateDialogOption(bool init, MQFileDialogCallbackParam *param, void
 		//option->modelname = getMultiBytesSubstring(MString(option->dialog->edit_modelname->GetText()).toAnsiString(), 20);
 #endif
 		option->texture_prefix = option->dialog->edit_textureprefix->GetText();
-
-		option->output_bone = 0;
-#if (BONE_UI!=0)
 		option->output_bone = option->dialog->combo_bone->GetCurrentIndex();
-#endif
 
 		delete option->dialog;
 	}
@@ -920,7 +909,9 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 		setting->Save("MtlFile", option.mtlfile);
 		setting->Save("HspFile", option.hspfile);
 		setting->Save("TexturePrefix", option.texture_prefix);
-		setting->Save("OutputBone", option.output_bone);
+		if (option.bone_exists) {
+			setting->Save("OutputBone", option.output_bone);
+		}
 		CloseSetting(setting);
 	}
 
