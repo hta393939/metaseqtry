@@ -1001,7 +1001,6 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 		}
 	}
 
-#if 1
 	// ID から bone_num の index を引く
 	std::map<UINT, int> bone_id_index;
 	// Initialize bones.
@@ -1107,8 +1106,6 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 				outputBone ? L"true" : L"false");
 		}
 	}
-
-#endif
 
 	for (int m = 0; m <= numMat; ++m) {
 		GPBMaterial material;
@@ -1340,6 +1337,38 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 				}
 			}
 		}
+	}
+
+
+	// ジョイント名リスト
+	int rootJointNum = 1;
+	std::vector<MString> jointNames;
+	if (outputBone) {
+		rootJointNum = 0;
+		for (const auto& bone : bone_param) {
+			if (bone.parent == 0) {
+				rootJointNum += 1;
+			}
+			jointNames.push_back(bone.name_en);
+		}
+	}
+	else {
+		jointNames.push_back(L"n0_Joint");
+	}
+
+	for (const MString& jointName : jointNames) {
+		auto result = checkOver(jointName);
+		if (!result) {
+			continue;
+		}
+		MQWindow mainwin = MQWindow::GetMainWindow();
+		MString message = MString(language.Search("InvalidBoneChar"))
+			+ L"\n"
+			+ jointName;
+		MQDialog::MessageWarningBox(mainwin,
+			message.c_str(),
+			GetResourceString("Error"));
+		return FALSE;
 	}
 
 
@@ -1648,92 +1677,6 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 	calcRadius(wholeBounding);
 
 
-#if 0
-	std::vector<int>bone_group;
-	// Bone list
-	if(bone_num == 0){
-		//WORD dw_bone_num = 1;
-		//fwrite(&dw_bone_num, 2, 1, fh);
-
-		//static const char bone_name[20] = "default";
-		//fwrite(bone_name, 20, 1, fh);
-	}else{
-		WORD dw_bone_num = (WORD)pmdbone_num;
-		//fwrite(&dw_bone_num, 2, 1, fh);
-		int pmdbone_index = 0;
-		for(int i=0; i<bone_num; i++){
-			if(bone_param[i].pmd_index >= 0 && bone_param[i].pmd_index >= pmdbone_index){
-				assert(bone_param[i].pmd_index == pmdbone_index);
-				MAnsiString subname = getMultiBytesSubstring(bone_param[i].name_jp.toAnsiString(), 20);
-				char bone_name[20];
-				memset(bone_name, 0, 20);
-				memcpy(bone_name, subname.c_str(), subname.length());
-				//fwrite(bone_name, 20, 1, fh);
-
-				WORD parent_bone_index = 0xFFFF;
-				if(bone_param[i].parent != 0){
-					auto parent_it = bone_id_index.find(bone_param[i].parent);
-					if(parent_it != bone_id_index.end()){
-						parent_bone_index = (WORD)bone_param[(*parent_it).second].pmd_index;
-					}
-				}
-				//fwrite(&parent_bone_index, 2, 1, fh);
-
-				// tail_pos_bone_index 
-				WORD tail_pos_bone_index = 0;
-				if(!bone_param[i].children.empty()){
-					auto& child_param = bone_param[bone_param[i].children.front()];
-					tail_pos_bone_index = (WORD)child_param.pmd_index; // tail位置のボーン番号(チェーン末端の場合は0xFFFF 0 →補足2) // 親：子は1：多なので、主に位置決め用
-					// 捩れボーンの場合、捩れ先ボーンを優先
-					if(bone_param[i].twist){
-						for(auto it = bone_param[i].children.begin(); it != bone_param[i].children.end(); ++it){
-							if(bone_param[*it].dummy && bone_param[*it].child_num == 0){
-								tail_pos_bone_index = (WORD)bone_param[*it].pmd_index;
-								break;
-							}
-						}
-					}
-					// 子が捩れボーンの場合、孫のボーンまで接続
-					if(child_param.twist && child_param.child_num != 0){
-						auto& tail_param = bone_param[child_param.children.front()];
-						tail_pos_bone_index = (WORD)tail_param.pmd_index;
-						for(auto it = child_param.children.begin(); it != child_param.children.end(); ++it){
-							if(!bone_param[*it].dummy && bone_param[*it].child_num != 0){
-								tail_pos_bone_index = (WORD)bone_param[*it].pmd_index;
-								break;
-							}
-						}
-					}
-				}
-				//fwrite(&tail_pos_bone_index, 2, 1, fh);
-
-				// bone_type
-				//   0:回転 1:回転と移動 2:IK 3:不明 4:IK影響下 5:回転影響下 6:IK接続先 7:非表示 8:捩れ 9:回転連動
-				BYTE bone_type = (bone_param[i].parent == 0) ? 1 : 0;
-				if(bone_param[i].tip_id == 0 && bone_param[i].child_num != 0) bone_type = 7;
-				else if(bone_param[i].child_num == 0) bone_type = 7;
-				if(bone_type <= 1){
-					bone_type = bone_param[i].movable ? 1 : 0;
-				}
-				//fwrite(&bone_type, 1, 1, fh);
-
-				float bone_head_pos[3];
-				bone_head_pos[0] = bone_param[i].org_pos.x * scaling;
-				bone_head_pos[1] = bone_param[i].org_pos.y * scaling;
-				bone_head_pos[2] = bone_param[i].org_pos.z * scaling;
-				//fwrite(&bone_head_pos, 4, 3, fh);
-
-				pmdbone_index++;
-			}
-		}
-	}
-
-				//MAnsiString subname = getMultiBytesSubstring(bone_param[i].name_en.toAnsiString(), 20);
-				//memset(bone_name, 0, 20);
-				//memcpy(bone_name, subname.c_str(), subname.length());
-#endif
-
-
 	DWORD elementNum = 2;
 	fwrite(&elementNum, sizeof(DWORD), 1, fh);
 
@@ -1747,20 +1690,6 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 		0.0f, 0.0f, 0.0f, 1.0f,
 	};
 
-	int rootJointNum = 1;
-	std::vector<MString> jointNames;
-	if (outputBone) {
-		rootJointNum = 0;
-		for (const auto& bone : bone_param) {
-			if (bone.parent == 0) {
-				rootJointNum += 1;
-			}
-			jointNames.push_back(bone.name_en);
-		}
-	}
-	else {
-		jointNames.push_back(L"n0_Joint");
-	}
 
 	DWORD nodeNum = 1 + rootJointNum;
 	fwrite(&nodeNum, sizeof(DWORD), 1, fh);
@@ -2220,10 +2149,12 @@ name.toAnsiString().c_str(), IDENVER);
 	setpos camera_id, vals(0), vals(1), vals(2) + vals(3)\n\
 	gplookat camera_id, vals(0), vals(1), vals(2)\n\
 *main\n\
+	getreq time, SYSREQ_TIMER\n\
+	sn = sin(double(time \\ 2000) * M_PI)\n\
 	redraw 0\n\
 	if strlen(bone_name) {\n\
 		gpnodeinfo result, id, GPNODEINFO_NODE, bone_name\n\
-		setangy result, M_PI * 30.0 / 180.0, 0.0, 0.0\n\
+		setangy result, sn, sn, sn\n\
 	}\n\
 	gpdraw\n\
 	pos 8, 8\n\

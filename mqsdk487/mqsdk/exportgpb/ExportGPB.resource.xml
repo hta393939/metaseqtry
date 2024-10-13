@@ -21,6 +21,7 @@
     <string id="InvalidModelChar">モデルファイル名に半角英数以外が含まれてるため出力できません。</string>
     <string id="InvalidTextureChar">テクスチャファイル名に半角英数以外が含まれてるため出力できません。</string>
     <string id="InvalidMaterialChar">材質名に半角英数以外が含まれているため出力できません。</string>
+    <string id="InvalidBoneChar">ボーン名に半角英数以外が含まれているため出力できません。</string>
     <string id="TooManyVertices">頂点数が多すぎるため出力できません。\n頂点数の上限は65,535です。</string>
     <string id="TooManyBaseObject">ベースオブジェクトが多すぎるため出力できません。\nベースオブジェクト数の上限は1です。</string>
   </resource>
@@ -45,6 +46,7 @@
     <string id="InvalidModelChar">Cannot export because invalid model name character.</string>
     <string id="InvalidTextureChar">Cannot export because invalid texture name character.</string>
     <string id="InvalidMaterialChar">Cannot export because invalid material name character.</string>
+    <string id="InvalidBoneChar">Cannot export because invalid bone name character.</string>
     <string id="TooManyVertices">Cannot export because vertices are too many.\nThe maximum number of vertices is 65,535.</string>
     <string id="TooManyBaseObject">Cannot export because base object are too many.\nThe maximum number of base object is 1.</string>
   </resource>
