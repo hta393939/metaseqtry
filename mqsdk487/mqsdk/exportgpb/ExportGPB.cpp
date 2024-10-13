@@ -1860,10 +1860,25 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 		0.0f, 0.0f, 0.0f, 1.0f,
 	};
 
-	DWORD nodeNum = 1 + (outputBone ? bone_num : 1);
+	int rootJointNum = 1;
+	std::vector<MString> jointNames;
+	if (outputBone) {
+		rootJointNum = 0;
+		for (const auto& bone : bone_param) {
+			if (bone.parent == 0) {
+				rootJointNum += 1;
+			}
+			jointNames.push_back(bone.name_en);
+		}
+	}
+	else {
+		jointNames.push_back(L"n0_Joint");
+	}
+
+	DWORD nodeNum = 1 + rootJointNum;
 	fwrite(&nodeNum, sizeof(DWORD), 1, fh);
 
-	{
+	{ // mesh を持つ node node
 		auto offset = ftell(fh);
 		DWORD nodeType = GPBNODE_NODE;
 		refTable[indexNode].offset = offset;
@@ -1895,18 +1910,26 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 		if (hasSkin) {
 			fwrite(&identity, sizeof(float), 16, fh); // bindShape
 
-			DWORD jointCount = 1;
+			DWORD jointCount = jointNames.size();
 			fwrite(&jointCount, sizeof(DWORD), 1, fh);
-			{
-				MAnsiString boneName("#n0_Joint");
-				DWORD boneNameByteNum = boneName.length();
+			for (const auto& jointName : jointNames) {
+				MAnsiString boneNameRef = MString(L"#" + jointName).toAnsiString();
+				DWORD boneNameByteNum = boneNameRef.length();
 				fwrite(&boneNameByteNum, sizeof(DWORD), 1, fh);
-				fwrite(boneName.c_str(), sizeof(char), boneNameByteNum, fh);
+				fwrite(boneNameRef.c_str(), sizeof(char), boneNameByteNum, fh);
 			}
 
 			DWORD inverseNum = jointCount * 16;
 			fwrite(&inverseNum, sizeof(DWORD), 1, fh);
-			fwrite(&identity, sizeof(float), 16, fh);
+			for (int i = 0; i < jointCount; ++i) {
+				// TODO: グローバル位置の負
+				if (outputBone) {
+					identity[12] = -bone_param[i].org_pos.x;
+					identity[13] = -bone_param[i].org_pos.y;
+					identity[14] = -bone_param[i].org_pos.z;
+				}
+				fwrite(&identity, sizeof(float), 16, fh);
+			}
 		}
 
 		fwrite(&enableMaterialNum, sizeof(DWORD), 1, fh);
@@ -1979,7 +2002,9 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 	DWORD channelNum = 1;
 	fwrite(&channelNum, sizeof(DWORD), 1, fh);
 	for (int i = 0; i < channelNum; ++i) {
-		MAnsiString targetName = JOINTNAME;
+		MAnsiString targetName = jointNames[0].toAnsiString();
+		//MAnsiString targetName = JOINTNAME;
+
 		DWORD targetNameLength = targetName.length();
 		fwrite(&targetNameLength, sizeof(DWORD), 1, fh);
 		fwrite(targetName.c_str(), sizeof(char), targetNameLength, fh);
