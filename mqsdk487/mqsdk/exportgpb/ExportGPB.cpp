@@ -340,7 +340,8 @@ private:
 		const MString& option,
 		int jointNum);
 	// プレビューコードを書き出す
-	int makeHSP(FILE* f, const GPBBounding& bounding, const MString& name);
+	int makeHSP(FILE* f, const GPBBounding& bounding, const MString& name,
+		const std::vector<MString>& boneNames);
 
 	/// <summary>
 	/// ノード一つ分
@@ -1841,18 +1842,6 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 				//memcpy(bone_name, subname.c_str(), subname.length());
 #endif
 
-	//// 材質の書き出し
-	if (fhMaterial) {
-		//keepName = L"";
-		std::vector<MString> defs;
-		this->makeMaterial(fhMaterial, materials,
-			keepName,
-			bone_num);
-	}
-	if (fhHsp) {
-		MString name = MString(L"res/") + MFileUtil::extractFileNameOnly(filename);
-		this->makeHSP(fhHsp, wholeBounding, name);
-	}
 
 	DWORD elementNum = 2;
 	fwrite(&elementNum, sizeof(DWORD), 1, fh);
@@ -2059,6 +2048,24 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 
 
 	//// バイナリ出力ここまで
+
+		//// 材質の書き出し
+	if (fhMaterial) {
+		//keepName = L"";
+		std::vector<MString> defs;
+		this->makeMaterial(fhMaterial, materials,
+			keepName,
+			bone_num);
+	}
+	if (fhHsp) {
+		MString name = MString(L"res/") + MFileUtil::extractFileNameOnly(filename);
+		if (!outputBone) {
+			jointNames.clear();
+		}
+		this->makeHSP(fhHsp, wholeBounding, name,
+			jointNames);
+	}
+
 
 	for(size_t i=0; i<expobjs.size(); i++){
 		delete expobjs[i];
@@ -2278,13 +2285,17 @@ material textured\n\
 
 
 // .hsp は res フォルダの一つ上に配置しないといけない
-int ExportGPBPlugin::makeHSP(FILE* f, const GPBBounding& bounding, const MString& name) {
+int ExportGPBPlugin::makeHSP(FILE* f, const GPBBounding& bounding, const MString& name,
+	const std::vector<MString>& boneNames) {
 	float fov = 45.0f * 3.141592f / 180.0f;
 	float width = bounding.max[0] - bounding.min[0];
 	float height = bounding.max[1] - bounding.min[1];
 	float thick = bounding.max[2] - bounding.min[2];
 	// 横長の場合のみ正確
 	float dist = fmaxf(width, height) * 1.125f * 0.5f / tanf(fov * 0.5f) + thick * 0.5f;
+
+	int boneNum = boneNames.size();
+	int boneIndex = (boneNum >= 2) ? 1 : 0;
 
 	FMES(f, "\
 #include \"hgimg4.as\"\n\
@@ -2296,13 +2307,14 @@ bounding.center[0], bounding.center[1], bounding.center[2], dist);
 	FMES(f, "\
 	name = \"%s\"\n\
 	verstr = \"%s\"\n\
-	bone_name = \"%s\"\n\
 ",
-name.toAnsiString().c_str(), IDENVER, "root");
+name.toAnsiString().c_str(), IDENVER);
 
-	if (false) {
+	if (boneNum > 0) {
 		FMES(f, "\n\
-");
+	gosub *set_bones\n\
+	bone_name = bone_names(%d)\n\
+", boneIndex);
 	}
 
 	FMES(f, "\
@@ -2319,7 +2331,7 @@ name.toAnsiString().c_str(), IDENVER, "root");
 	gplookat camera_id, vals(0), vals(1), vals(2)\n\
 *main\n\
 	redraw 0\n\
-	if 0 {\n\
+	if strlen(bone_name) {\n\
 		gpnodeinfo result, id, GPNODEINFO_NODE, bone_name\n\
 		setangy result, M_PI * 30.0 / 180.0, 0.0, 0.0\n\
 	}\n\
@@ -2331,6 +2343,22 @@ name.toAnsiString().c_str(), IDENVER, "root");
 	await 1000 / 60\n\
 	goto *main\n\
 ");
+
+	if (boneNum > 0) {
+		FMES(f, "\
+*set_bones\n\
+	sdim bone_names, 260, %d\n\
+", boneNum);
+		for (int i = 0; i < boneNum; ++i) {
+			FMES(f, "\
+	bone_names(%d) = \"%s\"\n\
+", i, boneNames[i].toAnsiString().c_str());
+		}
+
+		FMES(f, "\
+	return\n\
+");
+	}
 
 	return 0;
 }
