@@ -205,21 +205,6 @@ struct GPBMaterial {
 	}
 };
 
-/*
-struct GPBNode {
-	BYTE type; // node, joint
-	MQMatrix mtx;
-	MQMatrix base_mtx;
-	MQPoint org_pos;
-	MQPoint def_pos;
-	MAnsiString name;
-	std::vector<GPBNode> children;
-
-	GPBNode() {
-		name = MAnsiString("");
-	}
-};
-*/
 
 /// <summary>
 /// 参照テーブル構造体
@@ -228,7 +213,7 @@ struct GPBRef {
 	/// <summary>
 	/// チャンク名
 	/// </summary>
-	MAnsiString name;
+	MString name;
 	DWORD type;
 	/// <summary>
 	/// データの開始位置
@@ -239,7 +224,7 @@ struct GPBRef {
 	/// </summary>
 	int writeOffset;
 	GPBRef() {
-		name = "";
+		name = L"";
 		type = 0;
 		offset = 0;
 		writeOffset = 0;
@@ -592,10 +577,10 @@ struct GPBKey {
 };
 
 struct GPBScene {
-	MAnsiString cameraName;
+	MString cameraName;
 	float ambient[3];
 	GPBScene() {
-		cameraName = MAnsiString("");
+		cameraName = MString(L"");
 		ambient[0] = 0.17205810546875f;
 		ambient[1] = 0.17205810546875f;
 		ambient[2] = 0.17205810546875f;
@@ -689,7 +674,7 @@ int ExportGPBPlugin::writeJoint(FILE* fh,
 		auto offset = ftell(fh);
 		int refIndex = curBone.refIndex;
 		refTable[refIndex].offset = offset;
-		refTable[refIndex].name = curBone.name.toAnsiString();
+		refTable[refIndex].name = curBone.name;
 
 		GPBBoneParam* pParent = nullptr;
 		if (curBone.parent != 0) {
@@ -801,19 +786,19 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 		switch (i) {
 		case 0:
 			ref.type = REF_MESH;
-			ref.name = MAnsiString("n0_Mesh");
+			ref.name = MString(L"n0_Mesh");
 			break;
 		case 1:
 			ref.type = REF_SCENE;
-			ref.name = MAnsiString("__SCENE__");
+			ref.name = MString(L"__SCENE__");
 			break;
 		case 2:
 			ref.type = REF_ANIMATIONS;
-			ref.name = MAnsiString("__Animations__");
+			ref.name = MString(L"__Animations__");
 			break;
 		case 3:
 			ref.type = REF_NODE;
-			ref.name = MAnsiString("n0");
+			ref.name = MString(L"n0");
 			break;
 		}
 		refTable.push_back(ref);
@@ -949,7 +934,7 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 		GPBRef ref;
 		ref.offset = 0x00363534; // for check
 		ref.type = REF_NODE;
-		ref.name = MAnsiString(JOINTNAME);
+		ref.name = MString(L"n0_Joint");
 		refTable.push_back(ref);
 	}
 
@@ -1046,71 +1031,6 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 			}
 		}
 
-#if 0
-		// Sort by hierarchy
-		{
-			std::list<GPBBoneParam> bone_param_temp(bone_param.begin(), bone_param.end());
-			bone_param.clear();
-			bone_id_index.clear();
-			while (!bone_param_temp.empty()) {
-				bool done = false;
-				for (auto it = bone_param_temp.begin(); it != bone_param_temp.end(); ) {
-					if ((*it).parent != 0) { // 親がある場合
-						if (bone_id_index.end() != bone_id_index.find((*it).parent)) {
-							// 親が bone_id_index から見つかる場合
-
-							if (bone_param[bone_id_index[(*it).parent]].tip_id == 0
-									|| bone_id_index[(*it).parent] != bone_param.size()-1) {
-								// 親の先ボーンがそもそも無いか
-								// ～の場合は追加する
-
-								bone_id_index[(*it).id] = (int)bone_param.size();
-								bone_param.push_back(*it);
-								it = bone_param_temp.erase(it);
-								done = true;
-
-							} else if(bone_param[bone_id_index[(*it).parent]].tip_id == (*it).id) {
-								// 親のチップ先IDが自分のIDの場合は追加する
-
-								bone_id_index[(*it).id] = (int)bone_param.size();
-								bone_param.push_back(*it);
-								it = bone_param_temp.erase(it);
-								done = true;
-
-							} else {
-								++it; // try next
-							}
-
-						} else {
-							// 親が bone_id_index にまだ追加されてない場合は候補ではない
-							++it; // try next
-						}
-
-					} else {
-						// 親が無い場合
-
-						// インデックスを指定して追加して元から削除して1個以上あるフラグを立てる
-						bone_id_index[(*it).id] = (int)bone_param.size();
-						bone_param.push_back(*it);
-						it = bone_param_temp.erase(it);
-						done = true;
-					}
-				}
-
-				assert(done);
-				if (!done) {
-					// 辻褄があわず1個も見つからなかった場合，残り全部の親を無効化して全部登録
-					for (auto it = bone_param_temp.begin(); it != bone_param_temp.end(); ++it) {
-						bone_id_index[(*it).id] = (int)bone_param.size();
-						(*it).parent = 0;
-						bone_param.push_back(*it);
-					}
-					break;
-				}
-			}
-		}
-
-#else
 		{ // 親参照がある順に並べる
 			std::list<GPBBoneParam> bone_param_temp(bone_param.begin(), bone_param.end());
 			bone_param.clear();
@@ -1154,7 +1074,6 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 				}
 			}
 		}
-#endif
 
 		// Enum children. 親が有効だった場合に自分を親の子リストにソート後インデックスを追加する
 		for (int i=0; i<bone_num; i++) {
@@ -1185,7 +1104,7 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 
 			GPBRef ref;
 			ref.type = REF_NODE;
-			ref.name = bone_param[i].name_en.toAnsiString();
+			ref.name = bone_param[i].name_en;
 			bone_param[i].refIndex = refTable.size();
 			refTable.push_back(ref);
 		}
@@ -1197,22 +1116,6 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 				outputBone ? L"true" : L"false");
 		}
 	}
-
-	/*
-	for (int i=0; i<bone_num; i++) {
-		// name. en もこれでいいのか??
-		bone_param[i].name_jp = bone_param[i].name;
-		bone_param[i].name_en = bone_param[i].name;
-		// 設定を全部見て設定の jp or en のどちらかと一致したら設定で上書きする
-		for(auto it = m_BoneNameSetting.begin(); it != m_BoneNameSetting.end(); ++it) {
-			if((*it).jp == bone_param[i].name || (*it).en == bone_param[i].name){
-				bone_param[i].name_jp = (*it).jp;
-				bone_param[i].name_en = (*it).en;
-				break;
-			}
-		}
-	}
-	*/
 
 #endif
 
@@ -1452,7 +1355,6 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 	//// Open a file.
 	FILE *fh;
 	errno_t err = _wfopen_s(&fh, filename, L"wb");
-	//errno_t err = fopen_s(&fh, filename, "w");
 	if(err != 0) {
 		for(size_t i=0; i<expobjs.size(); i++) {
 			delete expobjs[i];
@@ -1505,8 +1407,6 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 			}
 		}
 	}
-	// debug
-	//FMES(fhMaterial, hspPath.toAnsiString().c_str());
 
 	FILE* fhHsp = nullptr;
 	if (option.hspfile != FILEOUT_NO) {
@@ -1581,10 +1481,10 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 		// この時点のオフセットはダミー
 		DWORD offset = ref.offset;
 		// バイト 名前
-		MAnsiString name = ref.name;
-		DWORD byteNum = name.length(); // size_t は大きすぎる
+		MAnsiString nameStr = ref.name.toAnsiString();
+		DWORD byteNum = nameStr.length(); // size_t は大きすぎる
 		fwrite(&byteNum, sizeof(DWORD), 1, fh);
-		fwrite(name.c_str(), sizeof(char), byteNum, fh);
+		fwrite(nameStr.c_str(), sizeof(char), byteNum, fh);
 		// タイプ
 		fwrite(&type, sizeof(DWORD), 1, fh);
 		// オフセット位置
@@ -1882,10 +1782,10 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 		fwrite(&nodeType, sizeof(DWORD), 1, fh);
 		fwrite(&identity, sizeof(float), 16, fh);
 
-		MAnsiString parent("");
-		DWORD parentByteNum = parent.length();
+		MAnsiString parentStr("");
+		DWORD parentByteNum = parentStr.length();
 		fwrite(&parentByteNum, sizeof(DWORD), 1, fh);
-		fwrite(parent.c_str(), sizeof(char), parentByteNum, fh);
+		fwrite(parentStr.c_str(), sizeof(char), parentByteNum, fh);
 
 		DWORD childNum = 0;
 		fwrite(&childNum, sizeof(DWORD), 1, fh);
@@ -1961,10 +1861,10 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 		fwrite(&nodeType, sizeof(DWORD), 1, fh);
 		fwrite(&identity, sizeof(float), 16, fh);
 
-		MAnsiString parent("");
-		DWORD parentByteNum = parent.length();
+		MAnsiString parentStr("");
+		DWORD parentByteNum = parentStr.length();
 		fwrite(&parentByteNum, sizeof(DWORD), 1, fh);
-		fwrite(parent.c_str(), sizeof(char), parentByteNum, fh);
+		fwrite(parentStr.c_str(), sizeof(char), parentByteNum, fh);
 
 		DWORD childNum = 0;
 		fwrite(&childNum, sizeof(DWORD), 1, fh);
@@ -1998,7 +1898,6 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 	fwrite(&channelNum, sizeof(DWORD), 1, fh);
 	for (int i = 0; i < channelNum; ++i) {
 		MAnsiString targetName = jointNames[0].toAnsiString();
-		//MAnsiString targetName = JOINTNAME;
 
 		DWORD targetNameLength = targetName.length();
 		fwrite(&targetNameLength, sizeof(DWORD), 1, fh);
