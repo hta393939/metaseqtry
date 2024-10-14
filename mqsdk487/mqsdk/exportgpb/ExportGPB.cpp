@@ -2135,8 +2135,8 @@ name.toAnsiString().c_str(), IDENVER);
 		FMES(f, "\n\
 	sdim bone_names, 260, %d\n\
 	gosub *set_bones\n\
-	bone_num = len(bone_names)\n\
-", boneIndex);
+	bone_num = length(bone_names)\n\
+", boneNum);
 	}
 
 	FMES(f, "\
