@@ -705,12 +705,6 @@ int ExportGPBPlugin::writeJoint(FILE* fh,
 			DWORD meshNameByteNum = meshName.length();
 			fwrite(&meshNameByteNum, sizeof(DWORD), 1, fh);
 			fwrite(meshName.c_str(), sizeof(char), meshNameByteNum, fh);
-
-			BYTE hasSkin = 0;
-			fwrite(&hasSkin, sizeof(BYTE), 1, fh);
-
-			DWORD enableMaterialNum = 0;
-			fwrite(&enableMaterialNum, sizeof(DWORD), 1, fh);
 		}
 	}
 
@@ -798,32 +792,6 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 
 
 	GPBScene scene;
-	std::vector<GPBKey> keyvals;
-
-	for (int i = 0; i <= 2; ++i) {
-		GPBKey keyval;
-		keyval.msec = 30 * 1000 * i;
-		if (!outputBone) {
-			switch (i) {
-			case 0:
-				keyval.p[0] = -1.0f;
-				keyval.p[1] = 1.0f;
-				keyval.p[2] = 0.0f;
-				break;
-			case 1:
-				keyval.p[0] = 0.0f;
-				keyval.p[1] = 0.0f;
-				keyval.p[2] = 0.5f;
-				break;
-			case 2:
-				keyval.p[0] = 1.0f;
-				keyval.p[1] = 1.0f;
-				keyval.p[2] = 1.0f;
-				break;
-			}
-		}
-		keyvals.push_back(keyval);
-	}
 
 	// Query a number of bones ボーン数
 	int bone_num = bone_manager.GetBoneNum();
@@ -1371,6 +1339,33 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 			message.c_str(),
 			GetResourceString("Error"));
 		return FALSE;
+	}
+
+
+	std::vector<GPBKey> keyvals;
+	for (int i = 0; i <= 2; ++i) {
+		GPBKey keyval;
+		keyval.msec = 30 * 1000 * i;
+		if (!outputBone) {
+			switch (i) {
+			case 0:
+				keyval.p[0] = -1.0f;
+				keyval.p[1] = 1.0f;
+				keyval.p[2] = 0.0f;
+				break;
+			case 1:
+				keyval.p[0] = 0.0f;
+				keyval.p[1] = 0.0f;
+				keyval.p[2] = 0.5f;
+				break;
+			case 2:
+				keyval.p[0] = 1.0f;
+				keyval.p[1] = 1.0f;
+				keyval.p[2] = 1.0f;
+				break;
+			}
+		}
+		keyvals.push_back(keyval);
 	}
 
 
@@ -2153,7 +2148,7 @@ name.toAnsiString().c_str(), IDENVER);
 	gplookat camera_id, vals(0), vals(1), vals(2)\n\
 *main\n\
 	getreq time, SYSREQ_TIMER\n\
-	val = sin(double(time \\ 10000) / 10000.0 * M_PI * 2.0) * 0.5\n\
+	val = sin(double(time \\ 10000) / 10000.0 * M_PI * 2.0) / 8.0\n\
 	redraw 0\n\
 	repeat bone_num\n\
 		gpnodeinfo result, id, GPNODEINFO_NODE, bone_names(cnt)\n\
