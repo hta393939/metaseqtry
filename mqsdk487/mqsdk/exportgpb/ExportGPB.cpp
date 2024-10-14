@@ -10,7 +10,7 @@
 #define MY_FILETYPE "HSP GPB simple(*.gpb)"
 #define MY_EXT "gpb"
 
-#define IDENVER "0.3.1"
+#define IDENVER "0.3.2"
 
 // $(ProjectDir)$(Platform)\$(Configuration)\
 // $(OutDir)$(TargetName)$(TargetExt)
@@ -506,7 +506,7 @@ static void CreateDialogOption(bool init, MQFileDialogCallbackParam *param, void
 {
 	CreateDialogOptionParam *option = (CreateDialogOptionParam*)ptr;
 
-	if(init)
+	if (init)
 	{
 		GPBOptionDialog *dialog = new GPBOptionDialog(param->dialog_id, param->parent_frame_id, option->plugin, *option->lang);
 		option->dialog = dialog;
@@ -523,7 +523,9 @@ static void CreateDialogOption(bool init, MQFileDialogCallbackParam *param, void
 		dialog->combo_hspfile->SetCurrentIndex(option->hspfile);
 
 		dialog->combo_bone->SetEnabled(option->bone_exists);
-		dialog->combo_bone->SetCurrentIndex(option->output_bone);
+		dialog->combo_bone->SetCurrentIndex(
+			(option->output_bone != 0 && option->bone_exists != 0) ? 1 : 0
+		);
 	}
 	else
 	{
@@ -2131,8 +2133,9 @@ name.toAnsiString().c_str(), IDENVER);
 
 	if (boneNum > 0) {
 		FMES(f, "\n\
+	sdim bone_names, 260, %d\n\
 	gosub *set_bones\n\
-	bone_name = bone_names(%d)\n\
+	bone_num = len(bone_names)\n\
 ", boneIndex);
 	}
 
@@ -2152,10 +2155,10 @@ name.toAnsiString().c_str(), IDENVER);
 	getreq time, SYSREQ_TIMER\n\
 	val = sin(double(time \\ 10000) / 10000.0 * M_PI * 2.0) * 0.5\n\
 	redraw 0\n\
-	if strlen(bone_name) {\n\
-		gpnodeinfo result, id, GPNODEINFO_NODE, bone_name\n\
+	repeat bone_num\n\
+		gpnodeinfo result, id, GPNODEINFO_NODE, bone_names(cnt)\n\
 		setangy result, val, val, val\n\
-	}\n\
+	loop\n\
 	gpdraw\n\
 	pos 8, 8\n\
 	mes verstr\n\
@@ -2166,10 +2169,9 @@ name.toAnsiString().c_str(), IDENVER);
 ");
 
 	if (boneNum > 0) {
-		FMES(f, "\
+		FMES(f, "\n\
 *set_bones\n\
-	sdim bone_names, 260, %d\n\
-", boneNum);
+");
 		for (int i = 0; i < boneNum; ++i) {
 			FMES(f, "\
 	bone_names(%d) = \"%s\"\n\

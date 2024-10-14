@@ -11,11 +11,11 @@ Windows 11 64bit版の Metasequoia 4.9.0a(64bit) で
 
 
 ## インストール
-https://github.com/hta393939/metaseqtry/releases/tag/0.3.1 ページから exportgpb.0.3.1.zip をダウンロードします。
+https://github.com/hta393939/metaseqtry/releases/tag/0.3.2 ページから exportgpb.0.3.2.zip をダウンロードします。
 
 メニューから「ヘルプ」→「プラグインについて」をクリックします。
 「プラグインについて」ダイアログの「インストール」をクリックします。
-さきほどダウンロードした exportgpb.0.3.1.zip ファイルを選択して
+さきほどダウンロードした exportgpb.0.3.2.zip ファイルを選択して
 「開く」をクリックします。
 リストに Export HSP GPB simple(*.gpb) が追加されたら成功です。
 
@@ -90,6 +90,7 @@ Constant, VRM1.0 MToon 材質では
 
 ## 更新履歴
 
+2024-10-14: ver.0.3.2 .hsp コードでボーンがある場合にすべてを回転する   
 2024-10-13: ver.0.3.1 Constant 材質の場合、基本色をそのまま diffuse に設定する   
   ボーンとスキニングに対応。アニメーションには対応していない。 
 2024-10-06: ver.0.2.1 ライティング無し条件を追加  
