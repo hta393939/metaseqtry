@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<resources>
+  <resource language="Japanese">
+    <string id="Option">GPBオプション</string>
+    <string id="VisibleOnly">可視オブジェクトのみ</string>
+    <string id="Bone">ボーンの出力</string>
+    <string id="Disable">しない</string>
+    <string id="Enable">する</string>
+    <string id="MtlFile">.materialファイル出力</string>
+    <string id="FileOutNo">出力しない</string>
+    <string id="FileOutForce">常時上書き</string>
+    <string id="FileOutConfirm">上書き確認する</string>
+    <string id="FileOutOWForbidden">上書き禁止</string>
+    <string id="OverwriteConfirm">上書きしてよいですか?</string>
+    <string id="OverwriteConfirmTitle">上書き確認</string>
+    <string id="HspFile">.hspファイル出力</string>
+    <string id="TexturePrefix">テクスチャプリフィクス</string>
+    <string id="OtherBoneGroup">非標準ボーンのグループ名</string>
+    <string id="OtherName">その他</string>
+    <string id="DoneOutput">出力しました</string>
+    <string id="InvalidModelChar">モデルファイル名に半角英数以外が含まれてるため出力できません。</string>
+    <string id="InvalidTextureChar">テクスチャファイル名に半角英数以外が含まれてるため出力できません。</string>
+    <string id="InvalidMaterialChar">材質名に半角英数以外が含まれているため出力できません。</string>
+    <string id="InvalidBoneChar">ボーン名に半角英数以外が含まれているため出力できません。</string>
+    <string id="TooManyVertices">頂点数が多すぎるため出力できません。\n頂点数の上限は65,535です。</string>
+    <string id="TooManyBaseObject">ベースオブジェクトが多すぎるため出力できません。\nベースオブジェクト数の上限は1です。</string>
+  </resource>
+  <resource language="English" default="1">
+    <string id="Option">GPB options</string>
+    <string id="VisibleOnly">Visible only</string>
+    <string id="Bone">Bone</string>
+    <string id="Disable">Off</string>
+    <string id="Enable">On</string>
+    <string id="MtlFile">.material file</string>
+    <string id="FileOutNo">No output</string>
+    <string id="FileOutForce">Always overwrite</string>
+    <string id="FileOutConfirm">Confirm overwrite</string>
+    <string id="FileOutOWForbidden">Forbidden overwrite</string>
+    <string id="OverwriteConfirm">Overwrite OK?</string>
+    <string id="OverwriteConfirmTitle">Overwrite confirm</string>
+    <string id="HspFile">Output .hsp file</string>
+    <string id="TexturePrefix">Texture prefix</string>
+    <string id="OtherBoneGroup">Other bone group</string>
+    <string id="OtherName">Other</string>
+    <string id="DoneOutput">Done output</string>
+    <string id="InvalidModelChar">Cannot export because invalid model name character.</string>
+    <string id="InvalidTextureChar">Cannot export because invalid texture name character.</string>
+    <string id="InvalidMaterialChar">Cannot export because invalid material name character.</string>
+    <string id="InvalidBoneChar">Cannot export because invalid bone name character.</string>
+    <string id="TooManyVertices">Cannot export because vertices are too many.\nThe maximum number of vertices is 65,535.</string>
+    <string id="TooManyBaseObject">Cannot export because base object are too many.\nThe maximum number of base object is 1.</string>
+  </resource>
+</resources>
