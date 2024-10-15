@@ -11,11 +11,11 @@ Windows 11 64bit版の Metasequoia 4.9.0a(64bit) で
 
 
 ## インストール
-https://github.com/hta393939/metaseqtry/releases/tag/0.3.2 ページから exportgpb.0.3.2.zip をダウンロードします。
+https://github.com/hta393939/metaseqtry/releases/tag/0.4.1 ページから exportgpb.0.4.1.zip をダウンロードします。
 
 メニューから「ヘルプ」→「プラグインについて」をクリックします。
 「プラグインについて」ダイアログの「インストール」をクリックします。
-さきほどダウンロードした exportgpb.0.3.2.zip ファイルを選択して
+さきほどダウンロードした exportgpb.0.4.1.zip ファイルを選択して
 「開く」をクリックします。
 リストに Export HSP GPB simple(*.gpb) が追加されたら成功です。
 

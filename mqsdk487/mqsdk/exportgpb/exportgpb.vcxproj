@@ -198,7 +198,6 @@
     <ClCompile Include="MFileUtil.cpp" />
     <ClCompile Include="MQExportObject.cpp" />
     <ClCompile Include="MString.cpp" />
-    <ClCompile Include="tinyxml2.cpp" />
   </ItemGroup>
   <ItemGroup>
     <None Include="readme.md" />
@@ -216,7 +215,6 @@
     <ClInclude Include="MFileUtil.h" />
     <ClInclude Include="MQExportObject.h" />
     <ClInclude Include="MString.h" />
-    <ClInclude Include="tinyxml2.h" />
   </ItemGroup>
   <ItemGroup>
     <Xml Include="ExportGPB.resource.xml" />

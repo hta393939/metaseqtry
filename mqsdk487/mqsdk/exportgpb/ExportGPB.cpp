@@ -41,7 +41,7 @@
 #include <algorithm>
 #include <assert.h>
 #include "MFileUtil.h"
-#include "tinyxml2.h" // Download TinyXML2 from https://github.com/leethomason/tinyxml2
+//#include "tinyxml2.h" // Download TinyXML2 from https://github.com/leethomason/tinyxml2
 
 #define GL_TRIANGLE (0x0004)
 #define GL_LINES (0x0001)
@@ -1936,32 +1936,32 @@ bool ExportGPBPlugin::LoadBoneSettingFile()
 #else
 	MString dir = GetResourceDir();
 #endif
-	MString filename = MFileUtil::combinePath(dir, L"ExportPMDBoneSetting.xml");
+	MString filename = MFileUtil::combinePath(dir, L"ExportGPBBoneSetting.xml");
 	return false; // 非対応
 
-	tinyxml2::XMLDocument doc;
-	tinyxml2::XMLError err = doc.LoadFile(filename.toAnsiString().c_str());
-	if(err != tinyxml2::XML_SUCCESS){
+
+	MQXmlDocument doc;
+	auto result = doc->LoadFile(filename.toAnsiString().c_str());
+	if (result != TRUE) {
 #ifdef _WIN32
-		MString buf = MString::format(L"Failed to load '%s'. (code %d)\n", filename.c_str(), err);
-		OutputDebugStringW(buf.c_str());
+		MString buf = MString::format(L"Failed to load '%s'.\n", filename.c_str());
 #endif
 		return false;
 	}
 
-	const tinyxml2::XMLElement *root = doc.RootElement();
-	if(root != NULL){
-		const tinyxml2::XMLElement *bones = root->FirstChildElement("bones");
-		if(bones != NULL){
-			const tinyxml2::XMLElement *elem = bones->FirstChildElement("bone");
-			while(elem != NULL){
-				const char *jp = elem->Attribute("jp");
-				const char *en = elem->Attribute("en");
-				const char *root = elem->Attribute("root");
+	const auto root = doc->GetRootElement();
+	if(root != NULL) {
+		const auto bones = root->FirstChildElement("bones");
+		if(bones != NULL) {
+			auto elem = bones->FirstChildElement("bone");
+			while (elem != NULL) {
+				const auto jp = elem->GetAttribute("jp");
+				const auto en = elem->GetAttribute("en");
+				const auto root = elem->GetAttribute("root");
 
 				BoneNameSetting setting;
-				setting.jp = MString::fromUtf8String(jp);
-				setting.en = MString::fromUtf8String(en);
+				setting.jp = MString::fromUtf8String(jp.c_str());
+				setting.en = MString::fromUtf8String(en.c_str());
 
 				m_BoneNameSetting.push_back(setting);
 
@@ -1969,7 +1969,7 @@ bool ExportGPBPlugin::LoadBoneSettingFile()
 					m_RootBoneName = setting;
 				}
 
-				elem = elem->NextSiblingElement("bone");
+				elem = elem->NextChildElement("bone", elem);
 			}
 		}
 
