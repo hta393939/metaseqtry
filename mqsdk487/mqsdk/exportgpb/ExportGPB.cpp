@@ -10,7 +10,7 @@
 #define MY_FILETYPE "HSP GPB simple(*.gpb)"
 #define MY_EXT "gpb"
 
-#define IDENVER "0.3.2"
+#define IDENVER "0.4.0"
 
 // $(ProjectDir)$(Platform)\$(Configuration)\
 // $(OutDir)$(TargetName)$(TargetExt)
@@ -60,6 +60,7 @@ enum {
 	FILEOUT_OWFORBIDDEN = 3,
 };
 
+
 #ifdef _WIN32
 HINSTANCE s_hInstance;
 wchar_t s_DllPath[MAX_PATH];
@@ -71,7 +72,6 @@ wchar_t s_DllPath[MAX_PATH];
 
 #define FMES fprintf_s
 
-#define JOINTNAME "n0_Joint"
 
 static bool	MQPointFuzzyEqual(MQPoint A, MQPoint B)
 {
@@ -181,6 +181,12 @@ struct GPBMaterial {
 	MString orgDiffuseTexture;
 	MString convDiffuseTexture;
 
+	// 0: repeat, 1: mirror, 2: clamp
+	int wrapU;
+	int wrapV;
+	// 0: nearest, 1: linear
+	int filter;
+
 	BOOL isDouble;
 
 	// RGBA
@@ -194,6 +200,10 @@ struct GPBMaterial {
 		isDouble = FALSE;
 		useLighting = true;
 		useTexture = false;
+		wrapU = MQMATERIAL_WRAP_CLAMP;
+		wrapV = MQMATERIAL_WRAP_CLAMP;
+		filter = MQMATERIAL_FILTER_LINEAR;
+
 		diffuse[0] = 1.0f;
 		diffuse[1] = 1.0f;
 		diffuse[2] = 1.0f;
@@ -1110,6 +1120,10 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 				texture = MFileUtil::extractFilenameAndExtension(MString(path));
 				if (texture.length() > 0) {
 					material.useTexture = true;
+
+					material.wrapU = mat->GetWrapModeU();
+					material.wrapV = mat->GetWrapModeV();
+					material.filter = mat->GetMappingFilter();
 				}
 
 				// MQPlugin.h
@@ -1970,6 +1984,19 @@ int ExportGPBPlugin::makeMaterial(FILE* f,
 	const MString& option,
 	int jointNum) {
 
+	std::vector<MString> wraps;
+	wraps.push_back(L"REPEAT");
+	wraps.push_back(L"MIRROR");
+	wraps.push_back(L"CLAMP");
+
+	std::vector<MString> magFilters;
+	magFilters.push_back(L"NEAREST");
+	magFilters.push_back(L"LINEAR");
+
+	std::vector<MString> minFilters;
+	minFilters.push_back(L"NEAREST_MIPMAP_NEAREST");
+	minFilters.push_back(L"LINEAR_MIPMAP_LINEAR");
+
 	if (option.length() > 0) {
 		FMES(f, "// %s\n", option.toAnsiString().c_str());
 	}
@@ -1986,14 +2013,6 @@ material textured\n\
 	u_worldViewProjectionMatrix = WORLD_VIEW_PROJECTION_MATRIX\n\
 	u_cameraPosition = CAMERA_WORLD_POSITION\n\
 	u_inverseTransposeWorldViewMatrix = INVERSE_TRANSPOSE_WORLD_VIEW_MATRIX\n\
-	sampler u_diffuseTexture\n\
-	{\n\
-		mipmap = true\n\
-		wrapS = CLAMP\n\
-		wrapT = CLAMP\n\
-		minFilter = LINEAR_MIPMAP_LINEAR\n\
-		magFilter = LINEAR\n\
-	}\n\
 }\n\
 ");
 
@@ -2055,10 +2074,17 @@ material textured\n\
 	sampler u_diffuseTexture\n\
 	{\n\
 		path = %s\n\
-		wrapS = REPEAT\n\
-		wrapT = REPEAT\n\
+		wrapS = %s\n\
+		wrapT = %s\n\
+		mipmap = true\n\
+		magFilter = %s\n\
+		minFilter = %s\n\
 	}\n\
-", material.convDiffuseTexture.toAnsiString().c_str());
+", material.convDiffuseTexture.toAnsiString().c_str(),
+	wraps[material.wrapU].toAnsiString().c_str(),
+	wraps[material.wrapV].toAnsiString().c_str(),
+	magFilters[material.filter].toAnsiString().c_str(),
+	minFilters[material.filter].toAnsiString().c_str());
 
 			FMES(f, "\
 	technique\n\
