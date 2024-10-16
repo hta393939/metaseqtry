@@ -1946,6 +1946,7 @@ bool ExportGPBPlugin::LoadBoneSettingFile()
 #ifdef _WIN32
 		MString buf = MString::format(L"Failed to load '%s'.\n", filename.c_str());
 #endif
+		doc->DeleteThis();
 		return false;
 	}
 
@@ -1975,6 +1976,7 @@ bool ExportGPBPlugin::LoadBoneSettingFile()
 
 	}
 
+	doc->DeleteThis();
 	return true;
 }
 
