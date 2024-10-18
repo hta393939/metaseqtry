@@ -6,7 +6,11 @@ class Misc {
 
     {
       const canvas = document.getElementById('texture1');
-      this.drawTexture(canvas);
+      this.drawTexture1(canvas);
+    }
+    {
+      const canvas = document.getElementById('texture2');
+      this.drawTexture2(canvas);
     }
 
     {
@@ -22,7 +26,7 @@ class Misc {
    * 
    * @param {HTMLCanvasElement} canvas 
    */
-  drawTexture(canvas) {
+  drawTexture2(canvas) {
     const w = 512;
     const h = 512;
     canvas.width = w;
@@ -48,6 +52,71 @@ class Misc {
         }
       }
       c.putImageData(data, 0, 0);
+    }
+    {
+      c.fillStyle = '#000000';
+      c.fillRect(0, 0, 4, h);
+      c.fillRect(0, 0, w, 4);
+
+      c.fillStyle = '#ffffff';
+      c.fillRect(w - 4, 0, 4, h);
+      c.fillRect(0, h - 4, w, 4);
+    }
+    {
+      const px = Math.floor(w * 0.5 * 0.9);
+      c.font = `normal ${px}px BIZ UDP ゴシック`;
+      for (const v of [
+        {"text": "龍", "color": "#ff1111",
+            "x": w * 1 / 4, "y": h * 1 / 4},
+        {"text": "飛", "color": "#3333ff",
+            "x": w * 3 / 4, "y": h * 1 / 4},
+        {"text": "銀", "color": "#cccccc",
+            "x": w * 1 / 4, "y": h * 3 / 4},
+        {"text": "桂", "color": "#11ff11",
+            "x": w * 3 / 4, "y": h * 3 / 4},
+      ]) {
+        c.textAlign = 'center';
+        c.textBaseline = 'middle';
+        c.fillStyle = v.color;
+        c.fillText(v.text,
+            v.x, v.y,
+        );
+      }
+    }
+  }
+
+  /**
+   * 
+   * @param {HTMLCanvasElement} canvas 
+   */
+  drawTexture1(canvas) {
+    const w = 512;
+    const h = 512;
+    canvas.width = w;
+    canvas.height = h;
+    const c = canvas.getContext('2d');
+    { // 背景1
+      c.fillStyle = '#cccc00';
+      c.fillRect(0, 0, w / 2, h / 2);
+
+      c.fillStyle = '#cc6600';
+      c.fillRect(w / 2, 0, w / 2, h / 2);
+
+      c.fillStyle = '#f0f0f0';
+      c.fillRect(0, h / 2, w / 2, h / 2);
+
+      c.fillStyle = '#008000';
+      c.fillRect(w / 2, h / 2, w / 2, h / 2);
+    }
+    {
+      const pad = 8;
+      c.fillStyle = '#000000';
+      c.fillRect(0, 0, pad, h);
+      c.fillRect(0, 0, w, pad);
+
+      c.fillStyle = '#ffcccc';
+      c.fillRect(w - pad, 0, pad, h);
+      c.fillRect(0, h - pad, w, pad);
     }
     {
       const px = Math.floor(w * 0.5 * 0.9);
