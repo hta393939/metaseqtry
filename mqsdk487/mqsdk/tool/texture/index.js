@@ -32,18 +32,26 @@ class Misc {
     canvas.width = w;
     canvas.height = h;
     const c = canvas.getContext('2d');
-    { // 背景1
-      
-    }
-    { // 背景2
+
+    const vs = [
+      {"size": 1, "col1": 0xffffff, "col2": 0x000000, "x": 0 / 2, "y": 0 / 2},
+      {"size": 2, "col1": 0xff0000, "col2": 0x0000ff, "x": w / 2, "y": 0 / 2},
+      {"size": 4, "col1": 0xffffff, "col2": 0xff8000, "x": 0 / 2, "y": h / 2},
+      {"size": 8, "col1": 0x00ff00, "col2": 0x000000, "x": w / 2, "y": h / 2},
+    ];
+    for (const v of vs) { // 背景2
       const data = c.getImageData(0, 0, w, h);
       for (let y = 0; y < h / 2; ++y) {
         for (let x = 0; x < w / 2; ++x) {
-          let offset = (x + y * w) * 4;
-          let lv = (((x + y) & 1) !== 0) ? 255 : 0;
-          let r = lv;
-          let g = lv;
-          let b = lv;
+          let rx = x + v.x;
+          let ry = y + v.y;
+          let offset = (rx + ry * w) * 4;
+          let bx = Math.floor(rx / v.size);
+          let by = Math.floor(ry / v.size);
+          let lv = (((bx + by) & 1) !== 0) ? v.col1 : v.col2;
+          let r = lv >> 16;
+          let g = (lv >> 8) & 0xff;
+          let b = lv & 0xff;
           let a = 255;
           data.data[offset] = r;
           data.data[offset+1] = g;
@@ -53,36 +61,7 @@ class Misc {
       }
       c.putImageData(data, 0, 0);
     }
-    {
-      c.fillStyle = '#000000';
-      c.fillRect(0, 0, 4, h);
-      c.fillRect(0, 0, w, 4);
 
-      c.fillStyle = '#ffffff';
-      c.fillRect(w - 4, 0, 4, h);
-      c.fillRect(0, h - 4, w, 4);
-    }
-    {
-      const px = Math.floor(w * 0.5 * 0.9);
-      c.font = `normal ${px}px BIZ UDP ゴシック`;
-      for (const v of [
-        {"text": "龍", "color": "#ff1111",
-            "x": w * 1 / 4, "y": h * 1 / 4},
-        {"text": "飛", "color": "#3333ff",
-            "x": w * 3 / 4, "y": h * 1 / 4},
-        {"text": "銀", "color": "#cccccc",
-            "x": w * 1 / 4, "y": h * 3 / 4},
-        {"text": "桂", "color": "#11ff11",
-            "x": w * 3 / 4, "y": h * 3 / 4},
-      ]) {
-        c.textAlign = 'center';
-        c.textBaseline = 'middle';
-        c.fillStyle = v.color;
-        c.fillText(v.text,
-            v.x, v.y,
-        );
-      }
-    }
   }
 
   /**
@@ -114,7 +93,7 @@ class Misc {
       c.fillRect(0, 0, pad, h);
       c.fillRect(0, 0, w, pad);
 
-      c.fillStyle = '#ffcccc';
+      c.fillStyle = '#ff9999';
       c.fillRect(w - pad, 0, pad, h);
       c.fillRect(0, h - pad, w, pad);
     }
