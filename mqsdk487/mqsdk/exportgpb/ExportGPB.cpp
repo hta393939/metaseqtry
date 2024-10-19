@@ -10,7 +10,7 @@
 #define MY_FILETYPE "HSP GPB simple(*.gpb)"
 #define MY_EXT "gpb"
 
-#define IDENVER "0.4.1"
+#define IDENVER "0.4.2"
 
 // $(ProjectDir)$(Platform)\$(Configuration)\
 // $(OutDir)$(TargetName)$(TargetExt)
@@ -1123,6 +1123,17 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 
 					material.wrapU = mat->GetWrapModeU();
 					material.wrapV = mat->GetWrapModeV();
+					{ // 境界処理の制限
+						if (material.wrapU != MQMATERIAL_WRAP_REPEAT
+							&& material.wrapU != MQMATERIAL_WRAP_CLAMP) {
+							material.wrapU = MQMATERIAL_WRAP_REPEAT;
+						}
+						if (material.wrapV != MQMATERIAL_WRAP_REPEAT
+							&& material.wrapV != MQMATERIAL_WRAP_CLAMP) {
+							material.wrapV = MQMATERIAL_WRAP_REPEAT;
+						}
+					}
+
 					material.filter = mat->GetMappingFilter();
 				}
 
