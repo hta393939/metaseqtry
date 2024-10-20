@@ -10,7 +10,7 @@
 #define MY_FILETYPE "HSP GPB simple(*.gpb)"
 #define MY_EXT "gpb"
 
-#define IDENVER "0.4.2"
+#define IDENVER "0.4.3"
 
 // $(ProjectDir)$(Platform)\$(Configuration)\
 // $(OutDir)$(TargetName)$(TargetExt)
@@ -341,14 +341,15 @@ private:
 	/// <summary>
 	/// ノード一つ分
 	/// </summary>
-	/// <param name="fh"></param>
-	/// <param name="node"></param>
+	/// <param name="fh">ファイルハンドル</param>
+	/// <param name="index">ボーンインデックス</param>
 	/// <returns></returns>
 	int writeJoint(FILE* fh,
 		std::vector<GPBBoneParam>& bone_param,
 		std::vector<GPBRef>& refTable,
 		int index,
-		std::map<UINT,int>& bone_id_index);
+		std::map<UINT,int>& bone_id_index,
+		float scaling);
 };
 
 
@@ -661,7 +662,8 @@ int ExportGPBPlugin::writeJoint(FILE* fh,
 	std::vector<GPBBoneParam>& bone_param,
 	std::vector<GPBRef>& refTable,
 	int index,
-	std::map<UINT, int>& bone_index_id) {
+	std::map<UINT, int>& bone_index_id,
+	float scaling) {
 	float material[16] = {
 		1.0f, 0.0f, 0.0f, 0.0f,
 		0.0f, 1.0f, 0.0f, 0.0f,
@@ -682,9 +684,9 @@ int ExportGPBPlugin::writeJoint(FILE* fh,
 			pParent = &bone_param[bone_index_id[curBone.parent]];
 		}
 		if (pParent) { // 前進差分
-			material[12] = curBone.org_pos.x - pParent->org_pos.x;
-			material[13] = curBone.org_pos.y - pParent->org_pos.y;
-			material[14] = curBone.org_pos.z - pParent->org_pos.z;
+			material[12] = (curBone.org_pos.x - pParent->org_pos.x) * scaling;
+			material[13] = (curBone.org_pos.y - pParent->org_pos.y) * scaling;
+			material[14] = (curBone.org_pos.z - pParent->org_pos.z) * scaling;
 		}
 
 		DWORD nodeType = GPBNODE_JOINT;
@@ -704,7 +706,8 @@ int ExportGPBPlugin::writeJoint(FILE* fh,
 			this->writeJoint(fh,
 				bone_param, refTable,
 				curBone.children[i],
-				bone_index_id);
+				bone_index_id,
+				scaling);
 		}
 
 		BYTE camlight[2] = { 0, 0 }; // camera, light
@@ -737,8 +740,7 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 #else
 	MString dir = GetResourceDir();
 #endif
-	//MString path = MFileUtil::combinePath(dir, L"ExportGPB.resource.xml");
-	MString path = MFileUtil::combinePath(dir, L"exportgpb.resource.xml");
+	MString path = MFileUtil::combinePath(dir, L"ExportGPB.resource.xml");
 	MLanguage language;
 	language.Load(lang, path.c_str());
 
@@ -840,8 +842,9 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 
 	// Show a dialog for converting axes
 	// 座標軸変換用ダイアログの表示
-	// 初期デフォルト値
+	// スケーリング倍率 初期デフォルト値
 	float scaling = 1;
+
 	CreateDialogOptionParam option;
 	option.plugin = this;
 	option.lang = &language;
@@ -1762,9 +1765,9 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 			for (int i = 0; i < jointCount; ++i) {
 				// TODO: グローバル位置の負
 				if (outputBone) {
-					identity[12] = -bone_param[i].org_pos.x;
-					identity[13] = -bone_param[i].org_pos.y;
-					identity[14] = -bone_param[i].org_pos.z;
+					identity[12] = -bone_param[i].org_pos.x * scaling;
+					identity[13] = -bone_param[i].org_pos.y * scaling;
+					identity[14] = -bone_param[i].org_pos.z * scaling;
 				}
 				fwrite(&identity, sizeof(float), 16, fh);
 			}
@@ -1790,8 +1793,10 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 				continue;
 			}
 			this->writeJoint(fh,
-				bone_param, refTable, i,
-				bone_id_index);
+				bone_param,
+				refTable, i,
+				bone_id_index,
+				scaling);
 		}
 	} else {
 
