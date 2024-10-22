@@ -803,7 +803,7 @@ BOOL MainWindow::DSpinBoxChanging(MQWidgetBase *sender, MQDocument doc)
 }
 
 
-int MainWindow::changeBone(MQDocument doc)
+int MainWindow::changeBone(MQDocument doc, BONESINFO& boneInfo)
 {
 	MQBoneManager bone_manager(this->m_pPlugin, doc);
 	int bone_num = bone_manager.GetBoneNum();
@@ -865,7 +865,8 @@ BOOL MainWindow::SliderChanging(MQWidgetBase *sender, MQDocument doc)
 	swprintf_s(text, L"Slider changing %d %f", ipos, pos);
 
 	m_BottomLabel->SetText(text);
-	this->changeBone(doc);
+	BONESINFO bonesInfo;
+	this->changeBone(doc, bonesInfo);
 	return FALSE;
 }
 

@@ -241,6 +241,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\MQBoneManager.h" />
+    <ClInclude Include="datastruct.h" />
     <ClInclude Include="mainwin.h" />
     <ClInclude Include="..\MQBasePlugin.h" />
     <ClInclude Include="..\MQPlugin.h" />

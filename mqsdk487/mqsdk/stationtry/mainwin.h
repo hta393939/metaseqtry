@@ -3,6 +3,8 @@
 
 #include "MQWidget.h"
 
+#include "datastruct.h"
+
 class WidgetTestPlugin;
 
 
@@ -70,7 +72,7 @@ public:
 	/// ボーンを変更する
 	/// </summary>
 	/// <returns></returns>
-	int changeBone(MQDocument doc);
+	int changeBone(MQDocument doc, BONESINFO& boneInfo);
 
 private:
 	MQFrame *CreateButtonFrame(MQWidgetBase *parent);
