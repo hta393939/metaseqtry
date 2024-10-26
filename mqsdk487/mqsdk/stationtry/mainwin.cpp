@@ -769,12 +769,12 @@ BOOL MainWindow::DigitSpinChanged(MQWidgetBase *sender, MQDocument doc)
 	m_DigitValueSpin->SetDecimalDigit(m_DigitSpin->GetPosition());
 
 	wchar_t text[64];
-	swprintf_s(text, L"DoubleSpinBox decimal digit %d", m_DigitSpin->GetPosition());
-	m_BottomLabel->SetText(text);
-	return FALSE;
+swprintf_s(text, L"DoubleSpinBox decimal digit %d", m_DigitSpin->GetPosition());
+m_BottomLabel->SetText(text);
+return FALSE;
 }
 
-BOOL MainWindow::DigitValueChanged(MQWidgetBase *sender, MQDocument doc)
+BOOL MainWindow::DigitValueChanged(MQWidgetBase* sender, MQDocument doc)
 {
 	m_DigitSpin->SetPosition(m_DigitValueSpin->GetDecimalDigit());
 
@@ -784,18 +784,18 @@ BOOL MainWindow::DigitValueChanged(MQWidgetBase *sender, MQDocument doc)
 	return FALSE;
 }
 
-BOOL MainWindow::DSpinBoxChanged(MQWidgetBase *sender, MQDocument doc)
+BOOL MainWindow::DSpinBoxChanged(MQWidgetBase* sender, MQDocument doc)
 {
-	MQDoubleSpinBox *spin = static_cast<MQDoubleSpinBox*>(sender);
+	MQDoubleSpinBox* spin = static_cast<MQDoubleSpinBox*>(sender);
 	wchar_t text[64];
 	swprintf_s(text, L"DoubleSpinBox changed %f", spin->GetPosition());
 	m_BottomLabel->SetText(text);
 	return FALSE;
 }
 
-BOOL MainWindow::DSpinBoxChanging(MQWidgetBase *sender, MQDocument doc)
+BOOL MainWindow::DSpinBoxChanging(MQWidgetBase* sender, MQDocument doc)
 {
-	MQDoubleSpinBox *spin = static_cast<MQDoubleSpinBox*>(sender);
+	MQDoubleSpinBox* spin = static_cast<MQDoubleSpinBox*>(sender);
 	wchar_t text[64];
 	swprintf_s(text, L"DoubleSpinBox changing %f", spin->GetPosition());
 	m_BottomLabel->SetText(text);
@@ -803,7 +803,7 @@ BOOL MainWindow::DSpinBoxChanging(MQWidgetBase *sender, MQDocument doc)
 }
 
 
-int MainWindow::changeBone(MQDocument doc, BONESINFO& boneInfo)
+int MainWindow::changeBone(MQDocument doc, BONESINFO& boneInfo, float curMsec)
 {
 	MQBoneManager bone_manager(this->m_pPlugin, doc);
 	int bone_num = bone_manager.GetBoneNum();
@@ -818,13 +818,88 @@ int MainWindow::changeBone(MQDocument doc, BONESINFO& boneInfo)
 	bone_id.resize(bone_num); // 領域確保する
 	bone_manager.EnumBoneID(bone_id); // IDリストを取得
 
+	// 時刻からキーa, bを決めて補間できるとなおよい
+	int aindex = 0;
+	int bindex = 0;
+	int keyNum = boneInfo.keyvals.size();
+	if (keyNum >= 1) {
+		auto first = boneInfo.keyvals[0];
+		if (curMsec <= first.msec) {
+			// 先頭の値を固定で採用する
+			aindex = 0;
+			bindex = 0;
+		}
+		else {
+			auto last = boneInfo.keyvals[keyNum - 1];
+			if (last.msec <= curMsec) {
+				// 最終の値を固定で採用する
+				aindex = keyNum - 1;
+				bindex = aindex;
+			}
+			else {
+				for (int i = 1; i < keyNum; ++i) {
+					auto keyval = boneInfo.keyvals[i];
+					if (keyval.msec == curMsec) {
+						aindex = i;
+						bindex = i;
+						break;
+					}
+					if (curMsec < keyval.msec) {
+						bindex = i;
+						aindex = bindex - 1;
+						break;
+					}
+				}
+			}
+		}
+
+	}
+
+	auto akeyval = boneInfo.keyvals[aindex];
+	auto bkeyval = boneInfo.keyvals[bindex];
+	float t = 0.0f;
+	if (aindex != bindex) {
+		float amsec = akeyval.msec;
+		float bmsec = bkeyval.msec;
+		t = (float)(curMsec - amsec) / (bmsec - amsec);
+	}
+
+
 	for (int i = 0; i < bone_num; ++i) {
 		std::wstring name;
+		bone_manager.GetName(bone_id[i], name);
+
+		ONEVAL aval;
+		ONEVAL bval;
+
+		int targetNum = akeyval.vals.size();
+		for (int j = 0; j < targetNum; ++j) {
+			if (akeyval.vals[j].target == name) {
+				aval = akeyval.vals[j].val;
+			}
+			if (bkeyval.vals[j].target == name) {
+				bval = bkeyval.vals[j].val;
+			}
+		}
+
+		ONEVAL val;
+		val.x = aval.x * (1.0f - t) + bval.x * t;
+		val.y = aval.y * (1.0f - t) + bval.y * t;
+		val.z = aval.z * (1.0f - t) + bval.z * t;
+		val.head = aval.head * (1.0f - t) + bval.head * t;
+		val.pitch = aval.pitch * (1.0f - t) + bval.pitch * t;
+		val.bank = aval.bank * (1.0f - t) + bval.bank * t;
+
 		MQPoint translate;
-		translate.x = 10.0f * (float)i;
-		translate.y = (float)(i * i);
-		translate.z = 0.0f;
+		translate.x = val.x;
+		translate.y = val.y;
+		translate.z = val.z;
+		MQAngle angle;
+		angle.head = val.head;
+		angle.pitch = val.pitch;
+		angle.bank = val.bank;
 		bone_manager.SetDeformTranslate(bone_id[i], translate);
+		bone_manager.SetDeformRotate(bone_id[i], angle);
 		/*
 		// ボーンID指定して受け取り変数を指定する
 		bone_manager.GetParent(bone_id[i], bone_param[i].parent);
@@ -866,7 +941,8 @@ BOOL MainWindow::SliderChanging(MQWidgetBase *sender, MQDocument doc)
 
 	m_BottomLabel->SetText(text);
 	BONESINFO bonesInfo;
-	this->changeBone(doc, bonesInfo);
+	float curMsec = (float)pos;
+	this->changeBone(doc, bonesInfo, curMsec);
 	return FALSE;
 }
 

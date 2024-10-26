@@ -72,7 +72,7 @@ public:
 	/// ボーンを変更する
 	/// </summary>
 	/// <returns></returns>
-	int changeBone(MQDocument doc, BONESINFO& boneInfo);
+	int changeBone(MQDocument doc, BONESINFO& boneInfo, float curMsec);
 
 private:
 	MQFrame *CreateButtonFrame(MQWidgetBase *parent);
