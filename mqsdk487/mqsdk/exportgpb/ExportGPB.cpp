@@ -10,7 +10,7 @@
 #define MY_FILETYPE "HSP GPB simple(*.gpb)"
 #define MY_EXT "gpb"
 
-#define IDENVER "0.4.3"
+#define IDENVER "0.5.1"
 
 // $(ProjectDir)$(Platform)\$(Configuration)\
 // $(OutDir)$(TargetName)$(TargetExt)
@@ -71,6 +71,15 @@ wchar_t s_DllPath[MAX_PATH];
 #define LARGEABS (800000000.0f)
 
 #define FMES fprintf_s
+
+struct INDEXWEIGHT {
+	int sortedIndex;
+	float weight;
+	INDEXWEIGHT() {
+		sortedIndex = 0;
+		weight = 0.0f;
+	}
+};
 
 
 static bool	MQPointFuzzyEqual(MQPoint A, MQPoint B)
@@ -1568,10 +1577,6 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 			float pos[3];
 			float nrm[3];
 			float uv[2];
-			// どこから調達??
-			float weight[4] = { 1.0, 0.0, 0.0, 0.0 };
-			// どこから調達??
-			float indices[4] = { 0, 0, 0, 0 };
 
 			// NOTE: meshNum でどうして頂点ループするの?? コード削除しすぎた??
 
@@ -1593,18 +1598,10 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 			uv[0] = vert_coord[j].u;
 			uv[1] = 1.0f - vert_coord[j].v;
 
-
-			UINT vert_bone_id[16]; // metaseq は最大16?
-			float weights[16];
-			int weight_num = 0;
-			if (bone_num > 0) { // ボーンが1個以上存在する場合
-				UINT vert_id = obj->GetVertexUniqueID(eobj->GetOriginalVertex(vert_expvert[j]));
-				int max_num = 16;
-				weight_num = bone_manager.GetVertexWeightArray(obj, vert_id, max_num, vert_bone_id, weights);
-			}
-
+			/*
 			int bone_index[4];
 			float bone_weight;
+
 			if (weight_num >= 2) {
 				int max_bone1 = -1;
 				float max_weight1 = 0.0f;
@@ -1645,13 +1642,12 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 				bone_weight = 1.0f;
 			}
 			else { // 0個の場合
-				bone_index[0] = 0;
-				bone_index[1] = 0;
-				bone_weight = 1.0f;
+				// 0ボーンに1.0f
+				// Do nothing.
 			}
 			indices[0] = bone_index[0];
 			weight[0] = bone_weight;
-
+			*/
 
 			for (int index = 0; index < 3; ++index) {
 				bounding.max[index] = fmaxf(bounding.max[index], pos[index]);
@@ -1663,6 +1659,41 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 			fwrite(&uv, sizeof(float), 2, fh);
 
 			if (outputBone) {
+
+				std::vector<INDEXWEIGHT> iws;
+				iws.resize(16);
+
+				// 受け取り用(最大16個まで)
+				UINT vert_bone_id[16];
+				// 受け取り用
+				float weights[16];
+				// ウエイトの個数
+				int weight_num = 0;
+				if (bone_num > 0) { // ボーンが1個以上存在する場合
+					UINT vert_id = obj->GetVertexUniqueID(eobj->GetOriginalVertex(vert_expvert[j]));
+					// 1頂点にたいして最大16個まで要求する
+					int max_num = 16;
+					weight_num = bone_manager.GetVertexWeightArray(obj, vert_id, max_num, vert_bone_id, weights);
+
+					for (int k = 0; k < weight_num; ++k) {
+						int bi = bone_id_index[vert_bone_id[k]];
+						iws[k].sortedIndex = bone_param[bi].sortedIndex;
+						iws[k].weight = weights[k];
+					}
+					std::sort(iws.begin(), iws.end(),
+						[](auto const& a, auto const& b) { return (a.weight > b.weight); });
+					if (weight_num == 0) {
+						iws[0].weight = 1.0f;
+					}
+				}
+
+				float indices[4] = { 0, 0, 0, 0 };
+				float weight[4] = { 1.0, 0.0, 0.0, 0.0 };
+				for (int k = 0; k < 4; ++k) {
+					indices[k] = iws[k].sortedIndex;
+					weights[k] = iws[k].weight;
+				}
+
 				fwrite(&weight, sizeof(float), 4, fh);
 				fwrite(&indices, sizeof(float), 4, fh);
 			}
