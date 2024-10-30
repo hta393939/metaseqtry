@@ -10,7 +10,7 @@
 #define MY_FILETYPE "HSP GPB simple(*.gpb)"
 #define MY_EXT "gpb"
 
-#define IDENVER "0.5.1"
+#define IDENVER "0.6.1"
 
 // $(ProjectDir)$(Platform)\$(Configuration)\
 // $(OutDir)$(TargetName)$(TargetExt)
@@ -45,7 +45,9 @@
 
 #define GL_TRIANGLE (0x0004)
 #define GL_LINES (0x0001)
+#define GL_UNSIGNED_BYTE (0x1401)
 #define GL_UNSIGNED_SHORT (0x1403)
+#define GL_UNSIGNED_INT (0x1405)
 
 enum {
 	STRUCT_SIMPLE = 0,
@@ -359,6 +361,8 @@ private:
 		int index,
 		std::map<UINT,int>& bone_id_index,
 		float scaling);
+
+	int loadAnimation(MString& animationFile);
 };
 
 
@@ -652,16 +656,41 @@ static void calcRadius(GPBBounding& bounding) {
 }
 
 /// <summary>
-/// U+007F より大きいコードが存在したら1を返す
+/// U+007F より大きいコードが存在したら1を返す。
+/// 半角記号も1を返す
 /// </summary>
 /// <param name="text"></param>
 /// <returns></returns>
 static int checkOver(const MString& text) {
 	for (const wchar_t* ptr = text.c_str() + text.length(); ptr > text.c_str(); ) {
 		ptr = text.prev(ptr);
-		if ((*ptr) > 0x7f) {
+		auto wc = *ptr;
+		if (wc > 0x7f) {
 			return 1;
 		}
+
+		switch (wc) {
+		case '-':
+		case '_':
+		case '.':
+		case '(':
+		case ')':
+		case '[':
+		case ']':
+			continue;
+		}
+
+		if ('0' <= wc && wc <= '9') {
+			continue;
+		}
+		if ('A' <= wc && wc <= 'Z') {
+			continue;
+		}
+		if ('a' <= wc && wc <= 'z') {
+			continue;
+		}
+
+		return 1; // 半角記号の残り
 	}
 	return 0;
 }
@@ -1712,15 +1741,15 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 				continue;
 			}
 			DWORD type = GL_TRIANGLE; // TRI or LINE
-			DWORD format = GL_UNSIGNED_SHORT; // u16 or u32
-			DWORD byteNum = material.faceIndices.size() * sizeof(unsigned short);
+			DWORD format = GL_UNSIGNED_INT; // u16 or u32
+			DWORD byteNum = material.faceIndices.size() * sizeof(unsigned int);
 			fwrite(&type, sizeof(DWORD), 1, fh);
 			fwrite(&format, sizeof(DWORD), 1, fh);
 			fwrite(&byteNum, sizeof(DWORD), 1, fh);
 			// 面頂点
 			for (const auto& index : material.faceIndices) {
-				unsigned short index16 = static_cast<unsigned short>(index);
-				fwrite(&index16, sizeof(unsigned short), 1, fh);
+				unsigned int index32 = static_cast<unsigned int>(index);
+				fwrite(&index32, sizeof(unsigned int), 1, fh);
 			}
 		}
 
@@ -2025,6 +2054,79 @@ bool ExportGPBPlugin::LoadBoneSettingFile()
 
 	doc->DeleteThis();
 	return true;
+}
+
+
+int ExportGPBPlugin::loadAnimation(MString& animationFile) {
+	MQXmlDocument doc;
+	auto result = doc->LoadFile(animationFile.toAnsiString().c_str());
+	if (result != TRUE) {
+		doc->DeleteThis();
+		return 0;
+	}
+
+	const auto root = doc->GetRootElement();
+	if (root == NULL) {
+		doc->DeleteThis();
+		return 0;
+	}
+
+	const auto anis = root->FirstChildElement("Animations");
+	if (anis == NULL) {
+		doc->DeleteThis();
+		return 0;
+	}
+	const auto anisid = anis->GetAttribute("id");
+
+	auto animelem = anis->FirstChildElement("Animation");
+	while (animelem != NULL) {
+		const auto animid = animelem->GetAttribute("id");
+		if (animid != "animations") {
+			animelem = animelem->NextChildElement("Animation", animelem);
+			continue;
+		}
+
+		auto channelelem = animelem->FirstChildElement("AnimationChannel");
+		while (channelelem != NULL) {
+			const auto tidElem = channelelem->FirstChildElement("targetId");
+			const auto targetId = tidElem->GetTextW();
+
+			const auto attrElem = channelelem->FirstChildElement("targetAttrib");
+			const auto targetAttribText = attrElem->GetTextW();
+
+			const auto ksElem = channelelem->FirstChildElement("keytimes");
+			const auto keytimesText = ksElem->GetTextW();
+
+			const auto vsElem = channelelem->FirstChildElement("values");
+			const auto valuesText = vsElem->GetTextW();
+
+			// space split はどうすればいいのかな
+
+			// "targetId"
+			// "targetAttrib"
+			// "keytimes" count=""
+			// "values" count=""
+			// "tangentsIn" count="0"
+			// "tangentsOut" count="0"
+			// "interpolations" count="1"
+
+			channelelem = channelelem->NextChildElement("AnimationChannel", channelelem);
+		}
+
+		/*
+		BoneNameSetting setting;
+		//setting.jp = MString::fromUtf8String(jp.c_str());
+
+		m_BoneNameSetting.push_back(setting);
+
+		if (root != nullptr) {
+			m_RootBoneName = setting;
+		}*/
+
+	}
+
+	doc->DeleteThis();
+	return 0;
 }
 
 
