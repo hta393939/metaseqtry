@@ -41,6 +41,7 @@
 #include <algorithm>
 #include <assert.h>
 #include "MFileUtil.h"
+#include "datastruct.h"
 //#include "tinyxml2.h" // Download TinyXML2 from https://github.com/leethomason/tinyxml2
 
 #define GL_TRIANGLE (0x0004)
@@ -361,6 +362,10 @@ private:
 		int index,
 		std::map<UINT,int>& bone_id_index,
 		float scaling);
+
+	/// 
+	int writeAnimations(FILE* fh,
+		const ANIMATIONS& animations);
 
 	int loadAnimation(MString& animationFile);
 };
@@ -1893,6 +1898,8 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 
 	//// アニメーションの書き出し
 	refTable[indexAnimations].offset = ftell(fh);
+	//this->writeAnimations(fh, animations);
+
 	DWORD animationNum = 1;
 	fwrite(&animationNum, sizeof(DWORD), 1, fh);
 
@@ -2003,6 +2010,76 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 	}
 
 	return TRUE;
+}
+
+int ExportGPBPlugin::writeAnimations(FILE* fh,
+	const ANIMATIONS& animations) {
+
+	DWORD animationNum = animations.anims.size();
+	fwrite(&animationNum, sizeof(DWORD), 1, fh);
+	for (int i = 0; i < animationNum; ++i) {
+		const auto anim = animations.anims[i];
+
+		MAnsiString animationName = MString(anim.id).toAnsiString(); // "animations"; // この名前であることが必要
+		DWORD animationNameByteNum = animationName.length();
+		fwrite(&animationNameByteNum, sizeof(DWORD), 1, fh);
+		fwrite(animationName.c_str(), sizeof(char), animationNameByteNum, fh);
+
+		DWORD channelNum = anim.channels.size();
+		fwrite(&channelNum, sizeof(DWORD), 1, fh);
+		for (int j = 0; j < channelNum; ++j) {
+			const auto ch = anim.channels[j];
+			MAnsiString targetName = MString(ch.targetId).toAnsiString();
+
+			DWORD targetNameLength = targetName.length();
+			fwrite(&targetNameLength, sizeof(DWORD), 1, fh);
+			fwrite(targetName.c_str(), sizeof(char), targetNameLength, fh);
+			DWORD valType = ch.attribVal; // tamane2 は 16 回転と移動
+			fwrite(&valType, sizeof(DWORD), 1, fh);
+
+			// キー配列
+			DWORD keyNum = ch.keytimes.size();
+			fwrite(&keyNum, sizeof(DWORD), 1, fh);
+			for (const auto& keyval : ch.keytimes) {
+				fwrite(&keyval, sizeof(DWORD), 1, fh);
+			}
+			// 値配列 個数
+			DWORD valNum = keyNum * (4 + 3);
+			fwrite(&valNum, sizeof(DWORD), 1, fh);
+			for (const auto& keyval : ch.values) {
+				if (false) {
+					fwrite(&keyval.sx, sizeof(float), 1, fh);
+					fwrite(&keyval.sy, sizeof(float), 1, fh);
+					fwrite(&keyval.sz, sizeof(float), 1, fh);
+				}
+				if (true) {
+					fwrite(&keyval.qx, sizeof(float), 1, fh);
+					fwrite(&keyval.qy, sizeof(float), 1, fh);
+					fwrite(&keyval.qz, sizeof(float), 1, fh);
+					fwrite(&keyval.qw, sizeof(float), 1, fh);
+				}
+				if (true) {
+					fwrite(&keyval.tx, sizeof(float), 1, fh);
+					fwrite(&keyval.ty, sizeof(float), 1, fh);
+					fwrite(&keyval.tz, sizeof(float), 1, fh);
+				}
+			}
+
+			DWORD tin = 0;
+			fwrite(&tin, sizeof(DWORD), 1, fh);
+			DWORD tout = 0;
+			fwrite(&tout, sizeof(DWORD), 1, fh);
+			DWORD inum = 1;
+			fwrite(&inum, sizeof(DWORD), 1, fh);
+			for (int k = 0; k < inum; ++k) {
+				// tamane2 では type 1 BSPLINE が格納されているが
+				// Curve::LINEAR しか対応してないらしい
+				DWORD itype = 1;
+				fwrite(&itype, sizeof(DWORD), 1, fh);
+			}
+		}
+	}
+	return 1;
 }
 
 bool ExportGPBPlugin::LoadBoneSettingFile()

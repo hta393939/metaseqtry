@@ -211,6 +211,7 @@
     <ClInclude Include="..\MQSetting.h" />
     <ClInclude Include="..\MQWidget.h" />
     <ClInclude Include="..\Common\Language.h" />
+    <ClInclude Include="datastruct.h" />
     <ClInclude Include="MAnsiString.h" />
     <ClInclude Include="MFileUtil.h" />
     <ClInclude Include="MQExportObject.h" />
