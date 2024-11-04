@@ -10,7 +10,7 @@
 #define MY_FILETYPE "HSP GPB simple(*.gpb)"
 #define MY_EXT "gpb"
 
-#define IDENVER "0.5.1"
+#define IDENVER "0.6.2"
 
 // $(ProjectDir)$(Platform)\$(Configuration)\
 // $(OutDir)$(TargetName)$(TargetExt)
@@ -41,11 +41,15 @@
 #include <algorithm>
 #include <assert.h>
 #include "MFileUtil.h"
-//#include "tinyxml2.h" // Download TinyXML2 from https://github.com/leethomason/tinyxml2
+#include "datastruct.h"
+#include <iostream>
+#include <sstream>
 
 #define GL_TRIANGLE (0x0004)
 #define GL_LINES (0x0001)
+#define GL_UNSIGNED_BYTE (0x1401)
 #define GL_UNSIGNED_SHORT (0x1403)
+#define GL_UNSIGNED_INT (0x1405)
 
 enum {
 	STRUCT_SIMPLE = 0,
@@ -359,6 +363,21 @@ private:
 		int index,
 		std::map<UINT,int>& bone_id_index,
 		float scaling);
+
+	/// 
+	int writeAnimations(FILE* fh,
+		const ANIMATIONS& animations);
+
+	/// <summary>
+	/// .xml から読み取る
+	/// </summary>
+	/// <param name="animationFile"></param>
+	/// <param name="animations"></param>
+	/// <returns></returns>
+	int loadAnimation(MString& animationFile,
+		ANIMATIONS& animations);
+
+	int makeTimeAnimation(ANIMATIONS& animations);
 };
 
 
@@ -652,16 +671,41 @@ static void calcRadius(GPBBounding& bounding) {
 }
 
 /// <summary>
-/// U+007F より大きいコードが存在したら1を返す
+/// U+007F より大きいコードが存在したら1を返す。
+/// 半角記号も1を返す
 /// </summary>
 /// <param name="text"></param>
 /// <returns></returns>
 static int checkOver(const MString& text) {
 	for (const wchar_t* ptr = text.c_str() + text.length(); ptr > text.c_str(); ) {
 		ptr = text.prev(ptr);
-		if ((*ptr) > 0x7f) {
+		auto wc = *ptr;
+		if (wc > 0x7f) {
 			return 1;
 		}
+
+		switch (wc) {
+		case '-':
+		case '_':
+		case '.':
+		case '(':
+		case ')':
+		case '[':
+		case ']':
+			continue;
+		}
+
+		if ('0' <= wc && wc <= '9') {
+			continue;
+		}
+		if ('A' <= wc && wc <= 'Z') {
+			continue;
+		}
+		if ('a' <= wc && wc <= 'z') {
+			continue;
+		}
+
+		return 1; // 半角記号の残り
 	}
 	return 0;
 }
@@ -927,7 +971,7 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 	// サブパスは取れる
 	MString contentDir = MFileUtil::extractDirectory(filename);
 	MString materialPath = MFileUtil::changeExtension(filename, L".material");
-	MString csvPath = MFileUtil::changeExtension(filename, L".csv");
+	MString xmlPath = MFileUtil::changeExtension(filename, L".xml");
 
 	// \\ できれいにつながる
 	//MString hspPath = MFileUtil::extractDirectory(filename) + onlyName + L".hsp";
@@ -967,7 +1011,7 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 
 		int vert_num = eobj->GetVertexCount();
 		orgvert_vert[oi].resize(vert_num, -1);
-		for(int evi=0; evi<vert_num; evi++){
+		for (int evi=0; evi<vert_num; evi++) {
 			orgvert_vert[oi][evi] = total_vert_num;
 
 			vert_orgobj.push_back(oi); // 元のオブジェクトIDを追加する
@@ -978,18 +1022,7 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 
 			vert_normal.push_back(nrm);
 			vert_coord.push_back(uv);
-			total_vert_num++;
-
-			if(total_vert_num > 65535) {
-				MQWindow mainwin = MQWindow::GetMainWindow();
-				MQDialog::MessageWarningBox(mainwin,
-					language.Search("TooManyVertices"),
-					GetResourceString("Error"));
-				for(size_t i=0; i<expobjs.size(); i++){
-					delete expobjs[i];
-				}
-				return FALSE;
-			}
+			total_vert_num ++;
 		}
 	}
 
@@ -1233,7 +1266,7 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 	}
 
 
-	std::vector<int> faceVertexIndices;
+	//std::vector<int> faceVertexIndices;
 
 	int output_face_vert_count = 0;
 	for (int m = 0; m <= numMat; m++)
@@ -1273,21 +1306,16 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 					}
 					std::vector<int> tri((n - 2) * 3);
 					doc->Triangulate(p.data(), n, tri.data(), (n - 2) * 3);
-					// NOTE: 面頂点
+					// 面頂点
 					for (int j = 0; j < n - 2; j++) {
-						WORD tvi[3];
-						tvi[0] = (WORD)orgvert_vert[i][vi[tri[j * 3]]];
-						tvi[1] = (WORD)orgvert_vert[i][vi[tri[j * 3 + 1]]];
-						tvi[2] = (WORD)orgvert_vert[i][vi[tri[j * 3 + 2]]];
+						int tvi[3];
+						tvi[0] = orgvert_vert[i][vi[tri[j * 3]]];
+						tvi[1] = orgvert_vert[i][vi[tri[j * 3 + 1]]];
+						tvi[2] = orgvert_vert[i][vi[tri[j * 3 + 2]]];
 						//fwrite(tvi, 2, 3, fh);
-						faceVertexIndices.push_back(tvi[0]);
-						faceVertexIndices.push_back(tvi[1]);
-						faceVertexIndices.push_back(tvi[2]);
-
-						// 元の順
-						//materials[mi].faceIndices.push_back(tvi[0]);
-						//materials[mi].faceIndices.push_back(tvi[1]);
-						//materials[mi].faceIndices.push_back(tvi[2]);
+						//faceVertexIndices.push_back(tvi[0]);
+						//faceVertexIndices.push_back(tvi[1]);
+						//faceVertexIndices.push_back(tvi[2]);
 
 						materials[mi].faceIndices.push_back(tvi[0]);
 						materials[mi].faceIndices.push_back(tvi[2]);
@@ -1378,6 +1406,11 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 		return FALSE;
 	}
 
+	// 1つのアニメーションチャンクのデータ
+	ANIMATIONS animations;
+	if (!outputBone) {
+		//this->makeTimeAnimation(animations); // NOTE: 
+	}
 
 	std::vector<GPBKey> keyvals;
 	for (int i = 0; i <= 2; ++i) {
@@ -1510,7 +1543,7 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 
 #if 0
 	FILE* fhInAnim = nullptr;
-	err = _wfopen_s(&fhInAnim, csvPath.c_str(), L"r");
+	err = _wfopen_s(&fhInAnim, xmlPath.c_str(), L"r");
 	if (err != 0) {
 		fhInAnim = nullptr;
 	}
@@ -1712,15 +1745,15 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 				continue;
 			}
 			DWORD type = GL_TRIANGLE; // TRI or LINE
-			DWORD format = GL_UNSIGNED_SHORT; // u16 or u32
-			DWORD byteNum = material.faceIndices.size() * sizeof(unsigned short);
+			DWORD format = GL_UNSIGNED_INT; // u16 or u32
+			DWORD byteNum = material.faceIndices.size() * sizeof(unsigned int);
 			fwrite(&type, sizeof(DWORD), 1, fh);
 			fwrite(&format, sizeof(DWORD), 1, fh);
 			fwrite(&byteNum, sizeof(DWORD), 1, fh);
 			// 面頂点
 			for (const auto& index : material.faceIndices) {
-				unsigned short index16 = static_cast<unsigned short>(index);
-				fwrite(&index16, sizeof(unsigned short), 1, fh);
+				unsigned int index32 = static_cast<unsigned int>(index);
+				fwrite(&index32, sizeof(unsigned int), 1, fh);
 			}
 		}
 
@@ -1864,6 +1897,8 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 
 	//// アニメーションの書き出し
 	refTable[indexAnimations].offset = ftell(fh);
+	//this->writeAnimations(fh, animations);
+
 	DWORD animationNum = 1;
 	fwrite(&animationNum, sizeof(DWORD), 1, fh);
 
@@ -1976,6 +2011,94 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 	return TRUE;
 }
 
+int ExportGPBPlugin::writeAnimations(FILE* fh,
+	const ANIMATIONS& animations) {
+
+	DWORD animationNum = animations.anims.size();
+	fwrite(&animationNum, sizeof(DWORD), 1, fh);
+	for (int i = 0; i < animationNum; ++i) {
+		const auto anim = animations.anims[i];
+
+		MAnsiString animationName = MString(anim.id).toAnsiString(); // "animations"; // この名前であることが必要
+		DWORD animationNameByteNum = animationName.length();
+		fwrite(&animationNameByteNum, sizeof(DWORD), 1, fh);
+		fwrite(animationName.c_str(), sizeof(char), animationNameByteNum, fh);
+
+		DWORD channelNum = anim.channels.size();
+		fwrite(&channelNum, sizeof(DWORD), 1, fh);
+		for (int j = 0; j < channelNum; ++j) {
+			const auto ch = anim.channels[j];
+			MAnsiString targetName = MString(ch.targetId).toAnsiString();
+
+			DWORD targetNameLength = targetName.length();
+			fwrite(&targetNameLength, sizeof(DWORD), 1, fh);
+			fwrite(targetName.c_str(), sizeof(char), targetNameLength, fh);
+			DWORD valType = ch.attribVal; // tamane2 は 16 回転と移動
+			fwrite(&valType, sizeof(DWORD), 1, fh);
+
+			// キー配列
+			DWORD keyNum = ch.keytimes.size();
+			fwrite(&keyNum, sizeof(DWORD), 1, fh);
+			for (const auto& keyval : ch.keytimes) {
+				fwrite(&keyval, sizeof(DWORD), 1, fh);
+			}
+
+			/*
+			// 値配列 個数
+			DWORD valNum = keyNum * (4 + 3);
+			fwrite(&valNum, sizeof(DWORD), 1, fh);
+			for (const auto& keyval : ch.values) {
+				if (false) {
+					fwrite(&keyval.sx, sizeof(float), 1, fh);
+					fwrite(&keyval.sy, sizeof(float), 1, fh);
+					fwrite(&keyval.sz, sizeof(float), 1, fh);
+				}
+				if (true) {
+					fwrite(&keyval.qx, sizeof(float), 1, fh);
+					fwrite(&keyval.qy, sizeof(float), 1, fh);
+					fwrite(&keyval.qz, sizeof(float), 1, fh);
+					fwrite(&keyval.qw, sizeof(float), 1, fh);
+				}
+				if (true) {
+					fwrite(&keyval.tx, sizeof(float), 1, fh);
+					fwrite(&keyval.ty, sizeof(float), 1, fh);
+					fwrite(&keyval.tz, sizeof(float), 1, fh);
+				}
+			}
+			*/
+			{
+				// 値配列 個数
+				DWORD valNum = ch.values.size();
+				fwrite(&valNum, sizeof(DWORD), 1, fh);
+				for (const auto& val : ch.values) {
+					fwrite(&val, sizeof(float), 1, fh);
+				}
+			}
+
+			{
+				DWORD tin = 0;
+				fwrite(&tin, sizeof(DWORD), 1, fh);
+			}
+			{
+				DWORD tout = 0;
+				fwrite(&tout, sizeof(DWORD), 1, fh);
+			}
+			{
+				DWORD inum = 1;
+				fwrite(&inum, sizeof(DWORD), 1, fh);
+				for (int k = 0; k < inum; ++k) {
+					// tamane2 では type 1 BSPLINE が格納されているが
+					// Curve::LINEAR しか対応してないらしい
+					DWORD itype = 1;
+					fwrite(&itype, sizeof(DWORD), 1, fh);
+				}
+			}
+
+		}
+	}
+	return 1;
+}
+
 bool ExportGPBPlugin::LoadBoneSettingFile()
 {
 #ifdef _WIN32
@@ -2025,6 +2148,187 @@ bool ExportGPBPlugin::LoadBoneSettingFile()
 
 	doc->DeleteThis();
 	return true;
+}
+
+int ExportGPBPlugin::makeTimeAnimation(ANIMATIONS& animations) {
+	ANIMATION anim;
+	anim.id = L"animations";
+
+	ANIMATIONCHANNEL ch;
+	ch.targetId = L"n0_Joint";
+	ch.attribVal = ANIMATE_ROTATE_TRANSLATE;
+	for (int i = 0; i <= 2; ++i) {
+		float msec = 30.0f * 1000.0f * (float)i;
+		ch.keytimes.push_back(msec);
+
+		ONEVAL v;
+		switch (i) {
+		case 0:
+			v.tx = -1.0f;
+			v.ty = 1.0f;
+			v.tz = 0.0f;
+			break;
+		case 1:
+			v.tx = 0.0f;
+			v.ty = 0.0f;
+			v.tz = 0.5f;
+			break;
+		case 2:
+			v.tx = 1.0f;
+			v.ty = 1.0f;
+			v.tz = 1.0f;
+			break;
+		}
+		ch.values.push_back(v.qx);
+		ch.values.push_back(v.qy);
+		ch.values.push_back(v.qz);
+		ch.values.push_back(v.qw);
+		ch.values.push_back(v.tx);
+		ch.values.push_back(v.ty);
+		ch.values.push_back(v.tz);
+	}
+	ch.interpolations.clear();
+	ch.interpolations.push_back(1);
+
+	anim.channels.push_back(ch);
+	animations.anims.push_back(anim);
+	return 1;
+}
+
+int ExportGPBPlugin::loadAnimation(MString& animationFile, ANIMATIONS& animations) {
+	animations.anims.clear();
+
+	MQXmlDocument doc;
+	auto result = doc->LoadFile(animationFile.toAnsiString().c_str());
+	if (result != TRUE) {
+		doc->DeleteThis();
+		return 0;
+	}
+
+	const auto root = doc->GetRootElement();
+	if (root == NULL) {
+		doc->DeleteThis();
+		return 0;
+	}
+
+	int ret = 0;
+
+	const auto anis = root->FirstChildElement("Animations");
+	if (anis == NULL) {
+		doc->DeleteThis();
+		return 0;
+	}
+
+	const auto anisid = anis->GetAttribute("id");
+
+	auto animelem = anis->FirstChildElement("Animation");
+	while (animelem != NULL) {
+		ANIMATION anim;
+
+		const auto animid = animelem->GetAttribute("id");
+		if (animid != "animations") {
+			animelem = animelem->NextChildElement("Animation", animelem);
+			continue;
+		}
+		else {
+			ret = 1;
+		}
+
+		auto channelelem = animelem->FirstChildElement("AnimationChannel");
+		while (channelelem != NULL) {
+			ANIMATIONCHANNEL ch;
+
+			const auto tidElem = channelelem->FirstChildElement("targetId");
+			const auto targetId = tidElem->GetTextW();
+
+			const auto attrElem = channelelem->FirstChildElement("targetAttrib");
+			const auto targetAttribText = attrElem->GetTextW();
+
+			const auto ksElem = channelelem->FirstChildElement("keytimes");
+			const auto keytimesText = ksElem->GetTextW();
+
+			const auto vsElem = channelelem->FirstChildElement("values");
+			const auto valuesText = vsElem->GetTextW();
+
+			const auto itpsElem = channelelem->FirstChildElement("interpolations");
+			const auto intersText = itpsElem->GetTextW();
+
+			// "targetId"
+			// "targetAttrib"
+			// "keytimes" count=""
+			// "values" count=""
+			// "tangentsIn" count="0"
+			// "tangentsOut" count="0"
+			// "interpolations" count="1"
+
+			ch.targetId = targetId;
+			{
+				MString str = MString(targetAttribText);
+				auto strs = str.split(L" ");
+
+				auto vstr = strs[0];
+				if (vstr.canParseInt()) {
+					auto v = vstr.toInt();
+					ch.attribVal = v;
+				}
+			}
+
+			{
+				MString str = MString(keytimesText);
+				auto strs = str.split(L" ");
+				for (auto vstr : strs) {
+					if (!vstr.canParseFloat()) {
+						continue;
+					}
+					auto v = vstr.toFloat();
+					ch.keytimes.push_back(v);
+				}
+			}
+
+			{
+				MString str = MString(valuesText);
+				auto strs = str.split(L" ");
+				for (auto vstr : strs) {
+					if (!vstr.canParseFloat()) {
+						continue;
+					}
+					auto v = vstr.toFloat();
+					ch.values.push_back(v);
+				}
+			}
+
+			{
+				MString str = MString(intersText);
+				auto strs = str.split(L" ");
+				for (const auto& vstr : strs) {
+					if (!vstr.toInt()) {
+						continue;
+					}
+					auto v = vstr.toInt();
+					ch.interpolations.push_back(v);
+				}
+			}
+
+			anim.channels.push_back(ch);
+
+			channelelem = channelelem->NextChildElement("AnimationChannel", channelelem);
+		}
+
+		/*
+		BoneNameSetting setting;
+		//setting.jp = MString::fromUtf8String(jp.c_str());
+
+		m_BoneNameSetting.push_back(setting);
+
+		if (root != nullptr) {
+			m_RootBoneName = setting;
+		}*/
+
+		animations.anims.push_back(anim);
+	}
+
+	doc->DeleteThis();
+	return ret;
 }
 
 
