@@ -1,4 +1,4 @@
-/**
+﻿/**
  * @file datastruct.h 
  */
 
@@ -6,7 +6,6 @@
 #include <vector>
 
 // @see https://github.com/gameplay3d/gameplay/blob/master/gameplay/src/AnimationTarget.cpp
-
 
 // @see https://github.com/gameplay3d/gameplay/blob/master/gameplay/src/Transform.h
 enum {
@@ -45,27 +44,37 @@ struct ONEVAL {
 	}
 };
 
-struct CHANNEL {
+struct ANIMATIONCHANNEL {
 	std::wstring targetId;
 	std::wstring targetAttrib;
 
+	/// <summary>
+	/// 16, 17 など
+	/// </summary>
 	unsigned int attribVal;
 
 	std::vector<float> keytimes;
-	std::vector<ONEVAL> values;
+	/// <summary>
+	/// 一直線の方
+	/// </summary>
+	std::vector<float> values;
+	/// <summary>
+	/// 構造体に読み直した方
+	/// </summary>
+	std::vector<ONEVAL> vals;
 	std::vector<float> tangentsIn;
 	std::vector<float> tangentsOut;
-	std::vector<float> interpolation;
+	std::vector<float> interpolations;
 
-	CHANNEL() {
+	ANIMATIONCHANNEL() {
 		attribVal = ROTMOV_VAL;
-		interpolation.push_back(1.0f);
+		interpolations.push_back(1.0f);
 	}
 };
 
 struct ANIMATION {
 	std::wstring id;
-	std::vector<CHANNEL> channels;
+	std::vector<ANIMATIONCHANNEL> channels;
 	ANIMATION() {
 		id = L"animations";
 	}
