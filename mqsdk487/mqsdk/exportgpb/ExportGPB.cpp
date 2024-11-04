@@ -10,7 +10,10 @@
 #define MY_FILETYPE "HSP GPB simple(*.gpb)"
 #define MY_EXT "gpb"
 
-#define IDENVER "0.6.2"
+#define IDENVER "0.7.1"
+
+// 0 だと無効化
+#define USESCALING (0)
 
 // $(ProjectDir)$(Platform)\$(Configuration)\
 // $(OutDir)$(TargetName)$(TargetExt)
@@ -62,6 +65,11 @@ enum {
 	FILEOUT_FORCE = 1,
 	FILEOUT_CONFIRM = 2,
 	FILEOUT_OWFORBIDDEN = 3,
+};
+
+enum {
+	FILEIN_NOTUSE = 0,
+	FILEIN_USE = 1,
 };
 
 
@@ -427,6 +435,7 @@ public:
 
 	MQComboBox* combo_mtlfile;
 	MQComboBox* combo_hspfile;
+	MQComboBox* combo_xmlanimfile;
 
 	GPBOptionDialog(int id, int parent_frame_id, ExportGPBPlugin *plugin, MLanguage& language);
 
@@ -487,6 +496,16 @@ GPBOptionDialog::GPBOptionDialog(int id, int parent_frame_id, ExportGPBPlugin *p
 	combo_bone->SetHintSizeRateX(8);
 	combo_bone->SetFillBeforeRate(1);
 
+	{
+		hframe = CreateHorizontalFrame(group);
+		CreateLabel(hframe, language.Search("XmlAnimationFile"));
+		this->combo_xmlanimfile = CreateComboBox(hframe);
+		combo_xmlanimfile->AddItem(language.Search("NotUse"));
+		combo_xmlanimfile->AddItem(language.Search("Use"));
+		combo_xmlanimfile->SetHintSizeRateX(8);
+		combo_xmlanimfile->SetFillBeforeRate(1);
+	}
+
 #if 0
 	CreateLabel(group, language.Search("Comment"));
 	memo_comment = CreateMemo(group);
@@ -500,15 +519,6 @@ BOOL GPBOptionDialog::ComboBoneChanged(MQWidgetBase *sender, MQDocument doc)
 	return FALSE;
 }
 
-#if 0
-BOOL GPBOptionDialog::ComboExperimentalChanged(MQWidgetBase* sender, MQDocument doc)
-{
-	this->output_hsp->SetEnabled(this->experimental->GetChecked());
-	return FALSE;
-}
-#endif
-
-#define MYSTR std::wstring
 
 struct CreateDialogOptionParam
 {
@@ -529,10 +539,13 @@ struct CreateDialogOptionParam
 	int output_bone;
 
 	int mtlfile;
-	MYSTR texture_prefix;
+	std::wstring texture_prefix;
 	int hspfile;
 
-	//MAnsiString comment;
+	/// <summary>
+	/// UI上の 1: 使う, 0: 使わない
+	/// </summary>
+	int input_xmlanim;
 };
 
 /// <summary>
@@ -565,6 +578,9 @@ static void CreateDialogOption(bool init, MQFileDialogCallbackParam *param, void
 		dialog->combo_bone->SetCurrentIndex(
 			(option->output_bone != 0 && option->bone_exists != 0) ? 1 : 0
 		);
+
+		dialog->combo_xmlanimfile->SetEnabled(true); // NOTE: 
+		dialog->combo_xmlanimfile->SetCurrentIndex(option->input_xmlanim);
 	}
 	else
 	{
@@ -577,6 +593,7 @@ static void CreateDialogOption(bool init, MQFileDialogCallbackParam *param, void
 #endif
 		option->texture_prefix = option->dialog->edit_textureprefix->GetText();
 		option->output_bone = option->dialog->combo_bone->GetCurrentIndex();
+		option->input_xmlanim = option->dialog->combo_xmlanimfile->GetCurrentIndex();
 
 		delete option->dialog;
 	}
@@ -911,7 +928,9 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 	option.struct_mode = STRUCT_SIMPLE;
 	// ファイル名だけ取り出して20文字に制限
 	//option.modelname = getMultiBytesSubstring(MFileUtil::extractFileNameOnly(filename).toAnsiString(), 20);
-	option.texture_prefix = MYSTR(L"res/");
+	option.texture_prefix = std::wstring(L"res/");
+
+	option.input_xmlanim = FILEIN_NOTUSE;
 
 	// Load a setting. 存在する場合はその値を使う
 	MQSetting *setting = OpenSetting();
@@ -921,6 +940,7 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 		setting->Load("HspFile", option.hspfile, option.hspfile);
 		setting->Load("TexturePrefix", option.texture_prefix, option.texture_prefix);
 		setting->Load("OutputBone", option.output_bone, option.output_bone);
+		setting->Load("InputXmlAnimFile", option.input_xmlanim, option.input_xmlanim);
 	}
 	MQFileDialogInfo dlginfo;
 	memset(&dlginfo, 0, sizeof(dlginfo));
@@ -928,7 +948,11 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 	dlginfo.scale = scaling;
 	// 軸の関係性は変更させない
 	dlginfo.hidden_flag = MQFileDialogInfo::HIDDEN_AXIS | MQFileDialogInfo::HIDDEN_INVERT_FACE;
-	//dlginfo.hidden_flag = MQFileDialogInfo::HIDDEN_AXIS | MQFileDialogInfo::HIDDEN_INVERT_FACE;
+#if (USESCALING != 0)
+#else
+	dlginfo.hidden_flag |= MQFileDialogInfo::HIDDEN_SCALE;
+#endif
+
 	dlginfo.axis_x = MQFILE_TYPE_RIGHT;
 	dlginfo.axis_y = MQFILE_TYPE_UP;
 	// PMD では FRONT 指定してあった
@@ -948,6 +972,7 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 		if (option.bone_exists) {
 			setting->Save("OutputBone", option.output_bone);
 		}
+		setting->Save("InputXmlAnimFile", option.input_xmlanim);
 		CloseSetting(setting);
 	}
 
@@ -971,7 +996,7 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 	// サブパスは取れる
 	MString contentDir = MFileUtil::extractDirectory(filename);
 	MString materialPath = MFileUtil::changeExtension(filename, L".material");
-	MString xmlPath = MFileUtil::changeExtension(filename, L".xml");
+	MString xmlAnimPath = MFileUtil::changeExtension(filename, L".xml");
 
 	// \\ できれいにつながる
 	//MString hspPath = MFileUtil::extractDirectory(filename) + onlyName + L".hsp";
@@ -1265,9 +1290,6 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 		}
 	}
 
-
-	//std::vector<int> faceVertexIndices;
-
 	int output_face_vert_count = 0;
 	for (int m = 0; m <= numMat; m++)
 	{
@@ -1312,10 +1334,6 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 						tvi[0] = orgvert_vert[i][vi[tri[j * 3]]];
 						tvi[1] = orgvert_vert[i][vi[tri[j * 3 + 1]]];
 						tvi[2] = orgvert_vert[i][vi[tri[j * 3 + 2]]];
-						//fwrite(tvi, 2, 3, fh);
-						//faceVertexIndices.push_back(tvi[0]);
-						//faceVertexIndices.push_back(tvi[1]);
-						//faceVertexIndices.push_back(tvi[2]);
 
 						materials[mi].faceIndices.push_back(tvi[0]);
 						materials[mi].faceIndices.push_back(tvi[2]);
@@ -1375,6 +1393,9 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 	}
 
 
+	// 1つのアニメーションチャンクのデータ
+	ANIMATIONS animations;
+
 	// ジョイント名リスト
 	int rootJointNum = 1;
 	std::vector<MString> jointNames;
@@ -1386,9 +1407,14 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 			}
 			jointNames.push_back(bone.name_en);
 		}
+
+		if (option.input_xmlanim) {
+			auto result = this->loadAnimation(xmlAnimPath, animations);
+		}
 	}
 	else {
 		jointNames.push_back(L"n0_Joint");
+		//this->makeTimeAnimation(animations);
 	}
 
 	for (const MString& jointName : jointNames) {
@@ -1406,11 +1432,6 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 		return FALSE;
 	}
 
-	// 1つのアニメーションチャンクのデータ
-	ANIMATIONS animations;
-	if (!outputBone) {
-		//this->makeTimeAnimation(animations); // NOTE: 
-	}
 
 	std::vector<GPBKey> keyvals;
 	for (int i = 0; i <= 2; ++i) {
@@ -1610,8 +1631,6 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 			float pos[3];
 			float nrm[3];
 			float uv[2];
-
-			// NOTE: meshNum でどうして頂点ループするの?? コード削除しすぎた??
 
 			MQObject obj = doc->GetObject(vert_orgobj[j]);
 			MQExportObject* eobj = expobjs[vert_orgobj[j]];
