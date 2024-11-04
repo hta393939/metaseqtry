@@ -355,8 +355,19 @@ private:
 		const std::vector<GPBMaterial>& materials,
 		const MString& option,
 		int jointNum);
-	// プレビューコードを書き出す
-	int makeHSP(FILE* f, const GPBBounding& bounding, const MString& name,
+
+	/// <summary>
+	/// プレビューコードを書き出す。
+	/// NOTE: アニメ有りの場合、gpact にするかどうか??
+	/// </summary>
+	/// <param name="f"></param>
+	/// <param name="bounding"></param>
+	/// <param name="name"></param>
+	/// <param name="boneNames"></param>
+	/// <returns></returns>
+	int makeHSP(FILE* f,
+		const GPBBounding& bounding,
+		const MString& name,
 		const std::vector<MString>& boneNames);
 
 	/// <summary>
@@ -385,7 +396,8 @@ private:
 	int loadAnimation(MString& animationFile,
 		ANIMATIONS& animations);
 
-	int makeTimeAnimation(ANIMATIONS& animations);
+	int makeTimeAnimation(ANIMATIONS& animations,
+		const std::wstring& targetId);
 };
 
 
@@ -1393,28 +1405,20 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 	}
 
 
-	// 1つのアニメーションチャンクのデータ
-	ANIMATIONS animations;
-
 	// ジョイント名リスト
-	int rootJointNum = 1;
+	int rootJointNum = 0;
 	std::vector<MString> jointNames;
 	if (outputBone) {
-		rootJointNum = 0;
 		for (const auto& bone : bone_param) {
 			if (bone.parent == 0) {
 				rootJointNum += 1;
 			}
 			jointNames.push_back(bone.name_en);
 		}
-
-		if (option.input_xmlanim) {
-			auto result = this->loadAnimation(xmlAnimPath, animations);
-		}
 	}
 	else {
+		rootJointNum = 1;
 		jointNames.push_back(L"n0_Joint");
-		//this->makeTimeAnimation(animations);
 	}
 
 	for (const MString& jointName : jointNames) {
@@ -1432,31 +1436,17 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 		return FALSE;
 	}
 
+	// 1つのアニメーションチャンクのデータ
+	ANIMATIONS animations;
 
-	std::vector<GPBKey> keyvals;
-	for (int i = 0; i <= 2; ++i) {
-		GPBKey keyval;
-		keyval.msec = 30 * 1000 * i;
-		if (!outputBone) {
-			switch (i) {
-			case 0:
-				keyval.p[0] = -1.0f;
-				keyval.p[1] = 1.0f;
-				keyval.p[2] = 0.0f;
-				break;
-			case 1:
-				keyval.p[0] = 0.0f;
-				keyval.p[1] = 0.0f;
-				keyval.p[2] = 0.5f;
-				break;
-			case 2:
-				keyval.p[0] = 1.0f;
-				keyval.p[1] = 1.0f;
-				keyval.p[2] = 1.0f;
-				break;
-			}
-		}
-		keyvals.push_back(keyval);
+	if (outputBone && option.input_xmlanim) {
+		// 0個になってもそのまま
+		auto result = this->loadAnimation(xmlAnimPath,
+			animations);
+	}
+	if (!outputBone) {
+		this->makeTimeAnimation(animations,
+			L"n0_Joint");
 	}
 
 
@@ -1561,14 +1551,6 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 			}
 		}
 	}
-
-#if 0
-	FILE* fhInAnim = nullptr;
-	err = _wfopen_s(&fhInAnim, xmlPath.c_str(), L"r");
-	if (err != 0) {
-		fhInAnim = nullptr;
-	}
-#endif
 
 	//// Headerの書き出し
 	BYTE major = 1;
@@ -1916,54 +1898,7 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 
 	//// アニメーションの書き出し
 	refTable[indexAnimations].offset = ftell(fh);
-	//this->writeAnimations(fh, animations);
-
-	DWORD animationNum = 1;
-	fwrite(&animationNum, sizeof(DWORD), 1, fh);
-
-	MAnsiString animationName = "animations"; // この名前であることが必要
-	DWORD animationNameByteNum = animationName.length();
-	fwrite(&animationNameByteNum, sizeof(DWORD), 1, fh);
-	fwrite(animationName.c_str(), sizeof(char), animationNameByteNum, fh);
-
-	DWORD channelNum = 1;
-	fwrite(&channelNum, sizeof(DWORD), 1, fh);
-	for (int i = 0; i < channelNum; ++i) {
-		MAnsiString targetName = jointNames[0].toAnsiString();
-
-		DWORD targetNameLength = targetName.length();
-		fwrite(&targetNameLength, sizeof(DWORD), 1, fh);
-		fwrite(targetName.c_str(), sizeof(char), targetNameLength, fh);
-		DWORD valType = ANIMATE_ROTATE_TRANSLATE; // tamane2 は 16 回転と移動
-		fwrite(&valType, sizeof(DWORD), 1, fh);
-
-		// キー配列
-		DWORD keyNum = keyvals.size();
-		fwrite(&keyNum, sizeof(DWORD), 1, fh);
-		for (const auto& keyval : keyvals) {
-			fwrite(&keyval.msec, sizeof(DWORD), 1, fh);
-		}
-		// 値配列 個数
-		DWORD valNum = keyNum * 7;
-		fwrite(&valNum, sizeof(DWORD), 1, fh);
-		for (const auto& keyval : keyvals) {
-			fwrite(&keyval.q, sizeof(float), 4, fh);
-			fwrite(&keyval.p, sizeof(float), 3, fh);
-		}
-
-		DWORD tin = 0;
-		fwrite(&tin, sizeof(DWORD), 1, fh);
-		DWORD tout = 0;
-		fwrite(&tout, sizeof(DWORD), 1, fh);
-		DWORD inum = 1;
-		fwrite(&inum, sizeof(DWORD), 1, fh);
-		for (int j = 0; j < inum; ++j) {
-			// tamane2 では type 1 BSPLINE が格納されているが
-			// Curve::LINEAR しか対応してないらしい
-			DWORD itype = 1;
-			fwrite(&itype, sizeof(DWORD), 1, fh);
-		}
-	}
+	this->writeAnimations(fh, animations);
 
 
 	// 動作チェック用の追加書き出し
@@ -1998,7 +1933,7 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 	}
 
 
-	for(size_t i=0; i<expobjs.size(); i++){
+	for(size_t i=0; i<expobjs.size(); i++) {
 		delete expobjs[i];
 	}
 
@@ -2008,12 +1943,6 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 	if (fhHsp) {
 		err = fclose(fhHsp);
 	}
-
-#if 0
-	if (fhInAnim) {
-		err = fclose(fhInAnim);
-	}
-#endif
 
 	if(fclose(fh) != 0){
 		return FALSE;
@@ -2169,12 +2098,13 @@ bool ExportGPBPlugin::LoadBoneSettingFile()
 	return true;
 }
 
-int ExportGPBPlugin::makeTimeAnimation(ANIMATIONS& animations) {
+int ExportGPBPlugin::makeTimeAnimation(ANIMATIONS& animations,
+		const std::wstring& targetId) {
 	ANIMATION anim;
 	anim.id = L"animations";
 
 	ANIMATIONCHANNEL ch;
-	ch.targetId = L"n0_Joint";
+	ch.targetId = targetId;
 	ch.attribVal = ANIMATE_ROTATE_TRANSLATE;
 	for (int i = 0; i <= 2; ++i) {
 		float msec = 30.0f * 1000.0f * (float)i;
@@ -2238,38 +2168,38 @@ int ExportGPBPlugin::loadAnimation(MString& animationFile, ANIMATIONS& animation
 		return 0;
 	}
 
-	const auto anisid = anis->GetAttribute("id");
+	// NOTE: chunk の都合でこのDLLで強制的な値に設定する
+	//const auto anisid = anis->GetAttribute("id");
+	animations.id = L"__Animations__";
 
 	auto animelem = anis->FirstChildElement("Animation");
 	while (animelem != NULL) {
 		ANIMATION anim;
 
-		const auto animid = animelem->GetAttribute("id");
-		if (animid != "animations") {
-			animelem = animelem->NextChildElement("Animation", animelem);
-			continue;
-		}
-		else {
+		std::wstring animid;
+		animelem->GetAttribute(L"id", animid);
+		anim.id = animid;
+		if (animid == L"animations") {
 			ret = 1;
 		}
 
-		auto channelelem = animelem->FirstChildElement("AnimationChannel");
-		while (channelelem != NULL) {
+		auto chel = animelem->FirstChildElement("AnimationChannel");
+		while (chel != NULL) {
 			ANIMATIONCHANNEL ch;
 
-			const auto tidElem = channelelem->FirstChildElement("targetId");
+			const auto tidElem = chel->FirstChildElement("targetId");
 			const auto targetId = tidElem->GetTextW();
 
-			const auto attrElem = channelelem->FirstChildElement("targetAttrib");
+			const auto attrElem = chel->FirstChildElement("targetAttrib");
 			const auto targetAttribText = attrElem->GetTextW();
 
-			const auto ksElem = channelelem->FirstChildElement("keytimes");
+			const auto ksElem = chel->FirstChildElement("keytimes");
 			const auto keytimesText = ksElem->GetTextW();
 
-			const auto vsElem = channelelem->FirstChildElement("values");
+			const auto vsElem = chel->FirstChildElement("values");
 			const auto valuesText = vsElem->GetTextW();
 
-			const auto itpsElem = channelelem->FirstChildElement("interpolations");
+			const auto itpsElem = chel->FirstChildElement("interpolations");
 			const auto intersText = itpsElem->GetTextW();
 
 			// "targetId"
@@ -2330,7 +2260,8 @@ int ExportGPBPlugin::loadAnimation(MString& animationFile, ANIMATIONS& animation
 
 			anim.channels.push_back(ch);
 
-			channelelem = channelelem->NextChildElement("AnimationChannel", channelelem);
+			// NOTE: chel は親を指定するのではないのか?
+			chel = chel->NextChildElement("AnimationChannel", chel);
 		}
 
 		/*
