@@ -278,7 +278,8 @@ struct GPBBoneParam {
 	/// 位置
 	MQPoint def_pos;
 	// スケール
-	//MQPoint scale;
+	MQPoint scale;
+
 	MString name;
 	// ダミーならtrue
 	bool dummy;
@@ -306,6 +307,8 @@ struct GPBBoneParam {
 		child_num = 0;
 		dummy = false;
 		sortedIndex = -1;
+
+		scale = MQPoint(1.0f, 1.0f, 1.0f);
 
 		refIndex = -1;
 		nodeType = GPBNODE_JOINT;
@@ -502,11 +505,15 @@ GPBOptionDialog::GPBOptionDialog(int id, int parent_frame_id, ExportGPBPlugin *p
 	hframe = CreateHorizontalFrame(group);
 	CreateLabel(hframe, language.Search("Bone"));
 
-	this->combo_bone = CreateComboBox(hframe);
-	combo_bone->AddItem(language.Search("Disable"));
-	combo_bone->AddItem(language.Search("Enable"));
-	combo_bone->SetHintSizeRateX(8);
-	combo_bone->SetFillBeforeRate(1);
+	{
+		this->combo_bone = CreateComboBox(hframe);
+		combo_bone->AddItem(language.Search("Disable"));
+		combo_bone->AddItem(language.Search("Enable"));
+		combo_bone->SetHintSizeRateX(8);
+		combo_bone->SetFillBeforeRate(1);
+
+		combo_bone->AddChangedEvent(this, &GPBOptionDialog::ComboBoneChanged);
+	}
 
 	{
 		hframe = CreateHorizontalFrame(group);
@@ -527,7 +534,8 @@ GPBOptionDialog::GPBOptionDialog(int id, int parent_frame_id, ExportGPBPlugin *p
 
 BOOL GPBOptionDialog::ComboBoneChanged(MQWidgetBase *sender, MQDocument doc)
 {
-	//this->combo_bone->SetEnabled(combo_bone->GetCurrentIndex() == 1);
+	this->combo_xmlanimfile->SetCurrentIndex(0);
+	this->combo_xmlanimfile->SetEnabled(this->combo_bone->GetCurrentIndex() != 0);
 	return FALSE;
 }
 
@@ -606,6 +614,9 @@ static void CreateDialogOption(bool init, MQFileDialogCallbackParam *param, void
 		option->texture_prefix = option->dialog->edit_textureprefix->GetText();
 		option->output_bone = option->dialog->combo_bone->GetCurrentIndex();
 		option->input_xmlanim = option->dialog->combo_xmlanimfile->GetCurrentIndex();
+
+		// NOTE: ここでどのボタンで閉じたか取得できないものか
+		//option->dialog->
 
 		delete option->dialog;
 	}
@@ -907,11 +918,18 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 			bone_manager.GetParent(bone_id[i], bone_param[i].parent);
 			// 子ボーン個数
 			bone_manager.GetChildNum(bone_id[i], bone_param[i].child_num);
+
+			// 位置(相対?global?)
 			bone_manager.GetBasePos(bone_id[i], bone_param[i].org_pos);
+			// 変形後位置(相対?global?)
 			bone_manager.GetDeformPos(bone_id[i], bone_param[i].def_pos);
-			bone_manager.GetDeformMatrix(bone_id[i], bone_param[i].mtx);
+
 			bone_manager.GetBaseMatrix(bone_id[i], bone_param[i].base_mtx);
-			//bone_manager.GetDeformScale(bone_id[i], bone_param[i].scale);
+			bone_manager.GetDeformMatrix(bone_id[i], bone_param[i].mtx);
+
+			//bone_manager.GetBaseScale();
+			bone_manager.GetDeformScale(bone_id[i], bone_param[i].scale);
+
 			bone_manager.GetName(bone_id[i], name);
 			bone_manager.GetDummy(bone_id[i], bone_param[i].dummy);
 
