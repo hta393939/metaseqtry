@@ -398,9 +398,6 @@ private:
 	/// <returns></returns>
 	int loadAnimation(MString& animationFile,
 		ANIMATIONS& animations);
-
-	int makeTimeAnimation(ANIMATIONS& animations,
-		const std::wstring& targetId);
 };
 
 
@@ -1462,10 +1459,6 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 		auto result = this->loadAnimation(xmlAnimPath,
 			animations);
 	}
-	if (!outputBone) {
-		this->makeTimeAnimation(animations,
-			L"n0_Joint");
-	}
 
 
 	//// Open a file.
@@ -2114,52 +2107,6 @@ bool ExportGPBPlugin::LoadBoneSettingFile()
 
 	doc->DeleteThis();
 	return true;
-}
-
-int ExportGPBPlugin::makeTimeAnimation(ANIMATIONS& animations,
-		const std::wstring& targetId) {
-	ANIMATION anim;
-	anim.id = L"animations";
-
-	ANIMATIONCHANNEL ch;
-	ch.targetId = targetId;
-	ch.attribVal = ANIMATE_ROTATE_TRANSLATE;
-	for (int i = 0; i <= 2; ++i) {
-		float msec = 30.0f * 1000.0f * (float)i;
-		ch.keytimes.push_back(msec);
-
-		ONEVAL v;
-		switch (i) {
-		case 0:
-			v.tx = -1.0f;
-			v.ty = 1.0f;
-			v.tz = 0.0f;
-			break;
-		case 1:
-			v.tx = 0.0f;
-			v.ty = 0.0f;
-			v.tz = 0.5f;
-			break;
-		case 2:
-			v.tx = 1.0f;
-			v.ty = 1.0f;
-			v.tz = 1.0f;
-			break;
-		}
-		ch.values.push_back(v.qx);
-		ch.values.push_back(v.qy);
-		ch.values.push_back(v.qz);
-		ch.values.push_back(v.qw);
-		ch.values.push_back(v.tx);
-		ch.values.push_back(v.ty);
-		ch.values.push_back(v.tz);
-	}
-	ch.interpolations.clear();
-	ch.interpolations.push_back(1);
-
-	anim.channels.push_back(ch);
-	animations.anims.push_back(anim);
-	return 1;
 }
 
 int ExportGPBPlugin::loadAnimation(MString& animationFile, ANIMATIONS& animations) {
