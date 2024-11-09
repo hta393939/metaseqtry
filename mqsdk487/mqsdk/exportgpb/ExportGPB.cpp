@@ -449,11 +449,14 @@ public:
 	MQComboBox* combo_hspfile;
 	MQComboBox* combo_xmlanimfile;
 
+	int canceled = 0;
+
 	GPBOptionDialog(int id, int parent_frame_id, ExportGPBPlugin *plugin, MLanguage& language);
 
-	// どこで結びつけている???
+	// 
 	BOOL ComboBoneChanged(MQWidgetBase *sender, MQDocument doc);
-	//BOOL ComboExperimentalChanged(MQWidgetBase* sender, MQDocument doc);
+
+	BOOL OnCloseQuery(MQWidgetBase* sender, MQDocument doc, MQWidgetCloseQueryParam& p);
 };
 
 /// <summary>
@@ -536,6 +539,14 @@ BOOL GPBOptionDialog::ComboBoneChanged(MQWidgetBase *sender, MQDocument doc)
 	return FALSE;
 }
 
+BOOL GPBOptionDialog::OnCloseQuery(MQWidgetBase* sender, MQDocument doc, MQWidgetCloseQueryParam& p)
+{
+	if (this->combo_xmlanimfile->GetCurrentIndex() != 0) {
+		p.Canceled = true;
+	}
+	return FALSE;
+}
+
 
 struct CreateDialogOptionParam
 {
@@ -563,6 +574,8 @@ struct CreateDialogOptionParam
 	/// UI上の 1: 使う, 0: 使わない
 	/// </summary>
 	int input_xmlanim;
+
+	int additive_info = 0;
 };
 
 /// <summary>
@@ -579,6 +592,9 @@ static void CreateDialogOption(bool init, MQFileDialogCallbackParam *param, void
 	{
 		GPBOptionDialog *dialog = new GPBOptionDialog(param->dialog_id, param->parent_frame_id, option->plugin, *option->lang);
 		option->dialog = dialog;
+
+		//dialog->SetCloseButton(false); // 左上のアイコンが一緒に消える
+		dialog->AddCloseQueryEvent(dialog, &GPBOptionDialog::OnCloseQuery);
 
 		dialog->check_visible->SetChecked(option->visible_only);
 
@@ -613,7 +629,7 @@ static void CreateDialogOption(bool init, MQFileDialogCallbackParam *param, void
 		option->input_xmlanim = option->dialog->combo_xmlanimfile->GetCurrentIndex();
 
 		// NOTE: ここでどのボタンで閉じたか取得できないものか
-		//option->dialog->
+		option->additive_info = option->dialog->canceled;
 
 		delete option->dialog;
 	}
@@ -987,7 +1003,28 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 	dlginfo.softname = "";
 	dlginfo.dialog_callback = CreateDialogOption;
 	dlginfo.dialog_callback_ptr = &option;
+
+#if 1
 	MQ_ShowFileDialog("GPB Export", &dlginfo);
+
+	{
+		keepName += MString::format(L", additive_info, %d",
+			option.additive_info);
+	}
+
+#else
+	MQFileDialogCallbackParam dialogParam;
+	dialogParam.dialog_id = 0; // どうやって算出するの??
+	dialogParam.parent_frame_id = 0; // どうやって算出するの??
+	//dialogParam.parent_frame_id = MQWidgetBase::GetSystemWidgetID(MQSystemWidget::MainWindow); // NOTE: 
+	CreateDialogOption(true, &dialogParam, &option);
+	auto optionResult = option.dialog->Execute();
+	if (optionResult == MQDialog::DIALOG_CANCEL) {
+		return FALSE;
+	}
+	CreateDialogOption(false, &dialogParam, &option);
+#endif
+
 
 	// Save a setting.
 	scaling = dlginfo.scale;
