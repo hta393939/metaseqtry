@@ -1206,15 +1206,6 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 		bone_object_num = 0;
 	}
 
-	if (!outputBone) {
-		GPBRef ref;
-		ref.offset = 0x00363534; // for check
-		ref.type = REF_NODE;
-		ref.name = MString(L"n0_Joint");
-		refTable.push_back(ref);
-	}
-
-
 	//// 処理後半
 
 	// サブパスは取れる
@@ -1627,10 +1618,6 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 			}
 			jointNames.push_back(bone.name_en);
 		}
-	}
-	else {
-		rootJointNum = 1;
-		jointNames.push_back(L"n0_Joint");
 	}
 
 	for (const MString& jointName : jointNames) {
@@ -2071,30 +2058,6 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 				bone_id_index,
 				scaling);
 		}
-	} else {
-
-		auto offset = ftell(fh);
-		DWORD nodeType = GPBNODE_JOINT;
-		// TODO: 4 でいいのか??
-		refTable[4].offset = offset;
-
-		fwrite(&nodeType, sizeof(DWORD), 1, fh);
-		fwrite(&identity, sizeof(float), 16, fh);
-
-		MAnsiString parentStr("");
-		DWORD parentByteNum = parentStr.length();
-		fwrite(&parentByteNum, sizeof(DWORD), 1, fh);
-		fwrite(parentStr.c_str(), sizeof(char), parentByteNum, fh);
-
-		DWORD childNum = 0;
-		fwrite(&childNum, sizeof(DWORD), 1, fh);
-
-		BYTE camlight[2] = { 0, 0 }; // camera, light
-		fwrite(&camlight, sizeof(BYTE), 2, fh);
-
-		// model
-		DWORD zero = 0;
-		fwrite(&zero, sizeof(DWORD), 1, fh);
 	}
 
 
