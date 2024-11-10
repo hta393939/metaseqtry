@@ -7,13 +7,15 @@
 #define MY_PRODUCT (0xB2B2501D)
 #define MY_ID (0x0ED64D3E)
 #define MY_PLUGINNAME "Export GPB Copyright(C) 2024, hta393939"
-#define MY_FILETYPE "HSP GPB simple(*.gpb)"
+#define MY_FILETYPE "HSP GPB(*.gpb)"
 #define MY_EXT "gpb"
 
 #define IDENVER "0.7.1"
 
 // 0 だと無効化
 #define USESCALING (0)
+
+#define USEMYDIALOG (1)
 
 // $(ProjectDir)$(Platform)\$(Configuration)\
 // $(OutDir)$(TargetName)$(TargetExt)
@@ -53,12 +55,6 @@
 #define GL_UNSIGNED_BYTE (0x1401)
 #define GL_UNSIGNED_SHORT (0x1403)
 #define GL_UNSIGNED_INT (0x1405)
-
-enum {
-	STRUCT_SIMPLE = 0,
-	STRUCT_OBJECT = 1,
-	STRUCT_SKIN = 2,
-};
 
 enum {
 	FILEOUT_NO = 0,
@@ -437,6 +433,40 @@ const char *ExportGPBPlugin::EnumFileExt(int index)
 	return NULL;
 }
 
+
+struct CreateDialogOptionParam
+{
+#if (USEMYDIALOG == 0)
+	ExportGPBPlugin* plugin;
+	GPBOptionDialog* dialog;
+	MLanguage* lang;
+#endif
+
+	bool visible_only;
+	/// <summary>
+	/// ボーンが1つ以上かどうか
+	/// </summary>
+	bool bone_exists;
+
+	/// <summary>
+	/// UI上の 1: 有効, 0: 無効
+	/// </summary>
+	int output_bone;
+
+	int mtlfile;
+	std::wstring texture_prefix;
+	int hspfile;
+
+	/// <summary>
+	/// UI上の 1: 使う, 0: 使わない
+	/// </summary>
+	int input_xmlanim;
+
+	int additive_info = 0;
+};
+
+
+
 class GPBOptionDialog : public MQDialog
 {
 public:
@@ -449,15 +479,171 @@ public:
 	MQComboBox* combo_hspfile;
 	MQComboBox* combo_xmlanimfile;
 
+#if USEMYDIALOG!=0
+	MQButton* btn_ok;
+	//MQButton* btn_cancel;
+
+	BOOL OnClickOK(MQWidgetBase* sender, MQDocument doc);
+	BOOL OnClickCancel(MQWidgetBase* sender, MQDocument doc);
+
+	GPBOptionDialog(ExportGPBPlugin* plugin, MLanguage& language);
+
+	/// <summary>
+	/// フレームウィジェットにUIを追加する
+	/// </summary>
+	int addUIs(int parent_frame_id, MLanguage& language);
+
+	int setValues(CreateDialogOptionParam *option);
+	int getValues(CreateDialogOptionParam *option);
+#endif
+
 	int canceled = 0;
 
 	GPBOptionDialog(int id, int parent_frame_id, ExportGPBPlugin *plugin, MLanguage& language);
 
-	// 
+	// combo_bone を変更した際に呼び出す関数
 	BOOL ComboBoneChanged(MQWidgetBase *sender, MQDocument doc);
 
 	BOOL OnCloseQuery(MQWidgetBase* sender, MQDocument doc, MQWidgetCloseQueryParam& p);
 };
+
+GPBOptionDialog::GPBOptionDialog(ExportGPBPlugin* plugin, MLanguage& language) : MQDialog()
+{
+	// 自己管理ダイアログを作る
+
+	//plugin->SendUserMessage();
+
+	this->SetTitle(L"GPB Export");
+
+	// フレームを作って子として追加
+	auto frame = this->CreateVerticalFrame(this);
+	this->AddChild(frame);
+
+	this->addUIs(frame->GetID(), language);
+
+#if USEMYDIALOG!=0
+	{
+		MQFrame* hframe = CreateHorizontalFrame(this);
+		this->btn_ok = CreateButton(hframe, L"OK");
+		//this->btn_ok->SetAlignment(MQButton::ALIGN_RIGHT);
+		//this->btn_ok->SetOutSpace
+		this->btn_ok->AddClickEvent(this, &GPBOptionDialog::OnClickOK);
+	}
+#endif
+
+}
+
+// 元のコンストラクタと同じ内容
+int GPBOptionDialog::addUIs(int parent_frame_id, MLanguage& language)
+{
+	MQFrame parent(parent_frame_id);
+
+	MQGroupBox* group = CreateGroupBox(&parent, language.Search("Option"));
+
+	MQFrame* hframe;
+
+	check_visible = CreateCheckBox(group, language.Search("VisibleOnly"));
+
+	hframe = CreateHorizontalFrame(group);
+	CreateLabel(hframe, language.Search("MtlFile"));
+	this->combo_mtlfile = CreateComboBox(hframe);
+	combo_mtlfile->AddItem(language.Search("FileOutNo"));
+	combo_mtlfile->AddItem(language.Search("FileOutForce"));
+	combo_mtlfile->AddItem(language.Search("FileOutConfirm"));
+	combo_mtlfile->AddItem(language.Search("FileOutOWForbidden"));
+	combo_mtlfile->SetHintSizeRateX(8);
+	combo_mtlfile->SetFillBeforeRate(1);
+
+	hframe = CreateHorizontalFrame(group);
+	CreateLabel(hframe, language.Search("TexturePrefix"));
+	this->edit_textureprefix = CreateEdit(hframe);
+	//edit_textureprefix->SetMaxAnsiLength(20);
+	edit_textureprefix->SetHorzLayout(LAYOUT_FILL);
+
+	hframe = CreateHorizontalFrame(group);
+	CreateLabel(hframe, language.Search("HspFile"));
+	this->combo_hspfile = CreateComboBox(hframe);
+	combo_hspfile->AddItem(language.Search("FileOutNo"));
+	combo_hspfile->AddItem(language.Search("FileOutForce"));
+	combo_hspfile->AddItem(language.Search("FileOutConfirm"));
+	combo_hspfile->AddItem(language.Search("FileOutOWForbidden"));
+	combo_hspfile->SetHintSizeRateX(8);
+	combo_hspfile->SetFillBeforeRate(1);
+
+	hframe = CreateHorizontalFrame(group);
+	CreateLabel(hframe, language.Search("Bone"));
+
+	{
+		this->combo_bone = CreateComboBox(hframe);
+		combo_bone->AddItem(language.Search("Disable"));
+		combo_bone->AddItem(language.Search("Enable"));
+		combo_bone->SetHintSizeRateX(8);
+		combo_bone->SetFillBeforeRate(1);
+
+		combo_bone->AddChangedEvent(this, &GPBOptionDialog::ComboBoneChanged);
+	}
+
+	{
+		hframe = CreateHorizontalFrame(group);
+		CreateLabel(hframe, language.Search("XmlAnimationFile"));
+		this->combo_xmlanimfile = CreateComboBox(hframe);
+		combo_xmlanimfile->AddItem(language.Search("NotUse"));
+		combo_xmlanimfile->AddItem(language.Search("Use"));
+		combo_xmlanimfile->SetHintSizeRateX(8);
+		combo_xmlanimfile->SetFillBeforeRate(1);
+	}
+
+#if 0
+	CreateLabel(group, language.Search("Comment"));
+	memo_comment = CreateMemo(group);
+	memo_comment->SetMaxLength(256);
+#endif
+
+	return 1;
+}
+
+int GPBOptionDialog::setValues(CreateDialogOptionParam *option)
+{
+	this->check_visible->SetChecked(option->visible_only);
+
+	this->combo_mtlfile->SetEnabled(true);
+	this->combo_mtlfile->SetCurrentIndex(option->mtlfile);
+
+	this->edit_textureprefix->SetEnabled(true);
+	this->edit_textureprefix->SetText(option->texture_prefix);
+
+	this->combo_hspfile->SetEnabled(true);
+	this->combo_hspfile->SetCurrentIndex(option->hspfile);
+
+	bool boneui = (option->output_bone != 0 && option->bone_exists != 0);
+
+	this->combo_bone->SetEnabled(option->bone_exists);
+	this->combo_bone->SetCurrentIndex(boneui ? 1 : 0);
+
+	this->combo_xmlanimfile->SetEnabled(boneui); 
+	this->combo_xmlanimfile->SetCurrentIndex(option->input_xmlanim);
+
+	return 0;
+}
+
+int GPBOptionDialog::getValues(CreateDialogOptionParam *option)
+{
+	option->visible_only = this->check_visible->GetChecked();
+
+	option->mtlfile = this->combo_mtlfile->GetCurrentIndex();
+	option->hspfile = this->combo_hspfile->GetCurrentIndex();
+#if 0
+	//option->modelname = getMultiBytesSubstring(MString(option->dialog->edit_modelname->GetText()).toAnsiString(), 20);
+#endif
+	option->texture_prefix = this->edit_textureprefix->GetText();
+	option->output_bone = this->combo_bone->GetCurrentIndex();
+	option->input_xmlanim = this->combo_xmlanimfile->GetCurrentIndex();
+
+	option->additive_info = this->canceled;
+
+	return 0;
+}
+
 
 /// <summary>
 /// ダイアログ コンストラクタ
@@ -539,6 +725,21 @@ BOOL GPBOptionDialog::ComboBoneChanged(MQWidgetBase *sender, MQDocument doc)
 	return FALSE;
 }
 
+BOOL GPBOptionDialog::OnClickOK(MQWidgetBase *sender, MQDocument doc)
+{
+	this->canceled |= 0x01;
+	this->Close(MQDialog::DIALOG_OK);
+	return FALSE;
+}
+
+BOOL GPBOptionDialog::OnClickCancel(MQWidgetBase* sender, MQDocument doc)
+{
+	this->canceled |= 0x02;
+	this->Close(MQDialog::DIALOG_CANCEL);
+	//sender->Close
+	return FALSE;
+}
+
 BOOL GPBOptionDialog::OnCloseQuery(MQWidgetBase* sender, MQDocument doc, MQWidgetCloseQueryParam& p)
 {
 	if (this->combo_xmlanimfile->GetCurrentIndex() != 0) {
@@ -548,36 +749,8 @@ BOOL GPBOptionDialog::OnCloseQuery(MQWidgetBase* sender, MQDocument doc, MQWidge
 }
 
 
-struct CreateDialogOptionParam
-{
-	ExportGPBPlugin *plugin;
-	GPBOptionDialog *dialog;
-	MLanguage *lang;
 
-	bool visible_only;
-	/// <summary>
-	/// ボーンが1つ以上かどうか
-	/// </summary>
-	bool bone_exists;
-
-	int struct_mode;
-	/// <summary>
-	/// UI上の 1: 有効, 0: 無効
-	/// </summary>
-	int output_bone;
-
-	int mtlfile;
-	std::wstring texture_prefix;
-	int hspfile;
-
-	/// <summary>
-	/// UI上の 1: 使う, 0: 使わない
-	/// </summary>
-	int input_xmlanim;
-
-	int additive_info = 0;
-};
-
+#if (USEMYDIALOG == 0)
 /// <summary>
 /// オプションダイアログを生成する
 /// </summary>
@@ -614,6 +787,8 @@ static void CreateDialogOption(bool init, MQFileDialogCallbackParam *param, void
 
 		dialog->combo_xmlanimfile->SetEnabled(true); // NOTE: 
 		dialog->combo_xmlanimfile->SetCurrentIndex(option->input_xmlanim);
+
+
 	}
 	else
 	{
@@ -634,7 +809,7 @@ static void CreateDialogOption(bool init, MQFileDialogCallbackParam *param, void
 		delete option->dialog;
 	}
 }
-
+#endif
 
 
 
@@ -959,8 +1134,10 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 	float scaling = 1;
 
 	CreateDialogOptionParam option;
+#if (USEMYDIALOG == 0)
 	option.plugin = this;
 	option.lang = &language;
+#endif
 	option.visible_only = false;
 	option.mtlfile = FILEOUT_CONFIRM;
 
@@ -968,7 +1145,6 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 	option.output_bone = 0;
 
 	option.hspfile = FILEOUT_CONFIRM;
-	option.struct_mode = STRUCT_SIMPLE;
 	// ファイル名だけ取り出して20文字に制限
 	//option.modelname = getMultiBytesSubstring(MFileUtil::extractFileNameOnly(filename).toAnsiString(), 20);
 	option.texture_prefix = std::wstring(L"res/");
@@ -996,6 +1172,7 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 	dlginfo.hidden_flag |= MQFileDialogInfo::HIDDEN_SCALE;
 #endif
 
+#if (USEMYDIALOG == 0)
 	dlginfo.axis_x = MQFILE_TYPE_RIGHT;
 	dlginfo.axis_y = MQFILE_TYPE_UP;
 	// PMD では FRONT 指定してあった
@@ -1004,7 +1181,6 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 	dlginfo.dialog_callback = CreateDialogOption;
 	dlginfo.dialog_callback_ptr = &option;
 
-#if 1
 	MQ_ShowFileDialog("GPB Export", &dlginfo);
 
 	{
@@ -1013,16 +1189,17 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 	}
 
 #else
-	MQFileDialogCallbackParam dialogParam;
-	dialogParam.dialog_id = 0; // どうやって算出するの??
-	dialogParam.parent_frame_id = 0; // どうやって算出するの??
-	//dialogParam.parent_frame_id = MQWidgetBase::GetSystemWidgetID(MQSystemWidget::MainWindow); // NOTE: 
-	CreateDialogOption(true, &dialogParam, &option);
-	auto optionResult = option.dialog->Execute();
-	if (optionResult == MQDialog::DIALOG_CANCEL) {
-		return FALSE;
+	//MQWindow _mainwin = MQWindow::GetMainWindow();
+	//MQDialog optionDialog(_mainwin);
+
+	GPBOptionDialog optionDialog(this, language);
+	optionDialog.setValues(&option);
+	auto optionResult = optionDialog.Execute();
+	optionDialog.getValues(&option);
+	if (optionResult != MQDialog::DIALOG_OK) {
+		return TRUE;
 	}
-	CreateDialogOption(false, &dialogParam, &option);
+
 #endif
 
 
