@@ -481,10 +481,8 @@ public:
 
 #if USEMYDIALOG!=0
 	MQButton* btn_ok;
-	//MQButton* btn_cancel;
 
 	BOOL OnClickOK(MQWidgetBase* sender, MQDocument doc);
-	BOOL OnClickCancel(MQWidgetBase* sender, MQDocument doc);
 
 	GPBOptionDialog(ExportGPBPlugin* plugin, MLanguage& language);
 
@@ -503,8 +501,6 @@ public:
 
 	// combo_bone を変更した際に呼び出す関数
 	BOOL ComboBoneChanged(MQWidgetBase *sender, MQDocument doc);
-
-	BOOL OnCloseQuery(MQWidgetBase* sender, MQDocument doc, MQWidgetCloseQueryParam& p);
 };
 
 GPBOptionDialog::GPBOptionDialog(ExportGPBPlugin* plugin, MLanguage& language) : MQDialog()
@@ -524,9 +520,13 @@ GPBOptionDialog::GPBOptionDialog(ExportGPBPlugin* plugin, MLanguage& language) :
 #if USEMYDIALOG!=0
 	{
 		MQFrame* hframe = CreateHorizontalFrame(this);
+		//hframe->SetHorzLayout(MQWidgetBase::LAYOUT_HINTSIZE);
+		//hframe->SetCellColumn(3);
 		this->btn_ok = CreateButton(hframe, L"OK");
-		//this->btn_ok->SetAlignment(MQButton::ALIGN_RIGHT);
-		//this->btn_ok->SetOutSpace
+		//this->btn_ok->SetHorzLayout(MQWidgetBase::LAYOUT_HINTSIZE);
+		this->btn_ok->SetHintSizeRateX(5.0);
+		//this->btn_ok->SetAlignment(MQButton::ALIGN_RIGHT); // 中のテキストアライン
+		this->btn_ok->SetFillBeforeRate(0.5);
 		this->btn_ok->AddClickEvent(this, &GPBOptionDialog::OnClickOK);
 	}
 #endif
@@ -731,23 +731,6 @@ BOOL GPBOptionDialog::OnClickOK(MQWidgetBase *sender, MQDocument doc)
 	this->Close(MQDialog::DIALOG_OK);
 	return FALSE;
 }
-
-BOOL GPBOptionDialog::OnClickCancel(MQWidgetBase* sender, MQDocument doc)
-{
-	this->canceled |= 0x02;
-	this->Close(MQDialog::DIALOG_CANCEL);
-	//sender->Close
-	return FALSE;
-}
-
-BOOL GPBOptionDialog::OnCloseQuery(MQWidgetBase* sender, MQDocument doc, MQWidgetCloseQueryParam& p)
-{
-	if (this->combo_xmlanimfile->GetCurrentIndex() != 0) {
-		p.Canceled = true;
-	}
-	return FALSE;
-}
-
 
 
 #if (USEMYDIALOG == 0)
@@ -2251,10 +2234,16 @@ int ExportGPBPlugin::writeAnimations(FILE* fh,
 			{
 				DWORD tin = 0;
 				fwrite(&tin, sizeof(DWORD), 1, fh);
+				for (int k = 0; k < tin; ++k) {
+					//fwrite(&foo, sizeof(), 1, fh);
+				}
 			}
 			{
 				DWORD tout = 0;
 				fwrite(&tout, sizeof(DWORD), 1, fh);
+				for (int k = 0; k < tout; ++k) {
+					//fwrite(&foo, sizeof(), 1, fh);
+				}
 			}
 			{
 				DWORD inum = 1;
