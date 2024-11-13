@@ -27,6 +27,8 @@
     <string id="XmlAnimationFile">xml アニメーションファイル</string>
     <string id="NotUse">使用しない</string>
     <string id="Use">使用する</string>
+    <string id="BoneScaleRot">ボーンのスケールと回転の採用</string>
+    <string id="MaterialConv">マテリアル名修正</string>
   </resource>
   <resource language="English" default="1">
     <string id="Option">GPB options</string>
@@ -55,5 +57,7 @@
     <string id="XmlAnimationFile">xml animation file</string>
     <string id="NotUse">Not use</string>
     <string id="Use">Use</string>
+    <string id="BoneScaleRot">Scale and rotation for bone</string>
+    <string id="MaterialConv">Convert material name</string>
   </resource>
 </resources>

@@ -380,7 +380,8 @@ private:
 		std::vector<GPBRef>& refTable,
 		int index,
 		std::map<UINT,int>& bone_id_index,
-		float scaling);
+		float scaling,
+		bool useScaleRot);
 
 	/// 
 	int writeAnimations(FILE* fh,
@@ -462,6 +463,15 @@ struct CreateDialogOptionParam
 	/// </summary>
 	int input_xmlanim;
 
+	/// <summary>
+	/// 0: 変えない, 1: 変える
+	/// </summary>
+	int material_conv;
+	/// <summary>
+	/// 1: スケールと回転も採用する
+	/// </summary>
+	int bone_scale_rot;
+
 	int additive_info = 0;
 };
 
@@ -478,6 +488,9 @@ public:
 	MQComboBox* combo_mtlfile;
 	MQComboBox* combo_hspfile;
 	MQComboBox* combo_xmlanimfile;
+
+	MQComboBox* combo_materialconv;
+	MQComboBox* combo_bonescalerot;
 
 #if USEMYDIALOG!=0
 	MQButton* btn_ok;
@@ -620,8 +633,16 @@ int GPBOptionDialog::setValues(CreateDialogOptionParam *option)
 	this->combo_bone->SetEnabled(option->bone_exists);
 	this->combo_bone->SetCurrentIndex(boneui ? 1 : 0);
 
-	this->combo_xmlanimfile->SetEnabled(boneui); 
-	this->combo_xmlanimfile->SetCurrentIndex(option->input_xmlanim);
+	{
+		this->combo_bonescalerot->SetEnabled(boneui);
+		this->combo_bonescalerot->SetCurrentIndex(option->bone_scale_rot);
+
+		this->combo_xmlanimfile->SetEnabled(boneui);
+		this->combo_xmlanimfile->SetCurrentIndex(option->input_xmlanim);
+	}
+
+	this->combo_materialconv->SetEnabled(true);
+	this->combo_materialconv->SetCurrentIndex(option->material_conv);
 
 	return 0;
 }
@@ -638,6 +659,9 @@ int GPBOptionDialog::getValues(CreateDialogOptionParam *option)
 	option->texture_prefix = this->edit_textureprefix->GetText();
 	option->output_bone = this->combo_bone->GetCurrentIndex();
 	option->input_xmlanim = this->combo_xmlanimfile->GetCurrentIndex();
+
+	option->material_conv = this->combo_materialconv->GetCurrentIndex();
+	option->bone_scale_rot = this->combo_bonescalerot->GetCurrentIndex();
 
 	option->additive_info = this->canceled;
 
@@ -927,7 +951,8 @@ int ExportGPBPlugin::writeJoint(FILE* fh,
 	std::vector<GPBRef>& refTable,
 	int index,
 	std::map<UINT, int>& bone_index_id,
-	float scaling) {
+	float scaling,
+	bool useScaleRot) {
 	float material[16] = {
 		1.0f, 0.0f, 0.0f, 0.0f,
 		0.0f, 1.0f, 0.0f, 0.0f,
@@ -948,9 +973,23 @@ int ExportGPBPlugin::writeJoint(FILE* fh,
 			pParent = &bone_param[bone_index_id[curBone.parent]];
 		}
 		if (pParent) { // 前進差分
-			material[12] = (curBone.org_pos.x - pParent->org_pos.x) * scaling;
-			material[13] = (curBone.org_pos.y - pParent->org_pos.y) * scaling;
-			material[14] = (curBone.org_pos.z - pParent->org_pos.z) * scaling;
+			if (useScaleRot) {
+				// NOTE: 行列で計算する 未実装
+				MQMatrix parentInv;
+				pParent->base_mtx.Inverse(parentInv);
+				MQMatrix localMtx;
+				localMtx = parentInv * curBone.base_mtx;
+				for (int row = 0; row < 4; ++row) {
+					for (int col = 0; col < 4; ++col) {
+						material[row * 4 + col] = localMtx.t[row*4+col];
+					}
+				}
+			}
+			else {
+				material[12] = (curBone.org_pos.x - pParent->org_pos.x) * scaling;
+				material[13] = (curBone.org_pos.y - pParent->org_pos.y) * scaling;
+				material[14] = (curBone.org_pos.z - pParent->org_pos.z) * scaling;
+			}
 		}
 
 		DWORD nodeType = GPBNODE_JOINT;
@@ -971,7 +1010,8 @@ int ExportGPBPlugin::writeJoint(FILE* fh,
 				bone_param, refTable,
 				curBone.children[i],
 				bone_index_id,
-				scaling);
+				scaling,
+				useScaleRot);
 		}
 
 		BYTE camlight[2] = { 0, 0 }; // camera, light
@@ -1035,6 +1075,8 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 
 	// ボーン処理をトータルで有効にするかどうか
 	bool outputBone = false;
+	// ボーンのスケールと回転を有効にするか
+	bool useScaleRot = false;
 
 	int indexMesh = 0;
 	int indexScene = 1;
@@ -1123,9 +1165,11 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 #endif
 	option.visible_only = false;
 	option.mtlfile = FILEOUT_CONFIRM;
+	option.material_conv = 0;
 
 	option.bone_exists = (bone_num > 0);
 	option.output_bone = 0;
+	option.bone_scale_rot = 1;
 
 	option.hspfile = FILEOUT_CONFIRM;
 	// ファイル名だけ取り出して20文字に制限
@@ -1141,7 +1185,9 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 		setting->Load("MtlFile", option.mtlfile, option.mtlfile);
 		setting->Load("HspFile", option.hspfile, option.hspfile);
 		setting->Load("TexturePrefix", option.texture_prefix, option.texture_prefix);
+		setting->Load("MaterialConv", option.material_conv, option.material_conv);
 		setting->Load("OutputBone", option.output_bone, option.output_bone);
+		setting->Load("BoneScaleRot", option.bone_scale_rot, option.bone_scale_rot);
 		setting->Load("InputXmlAnimFile", option.input_xmlanim, option.input_xmlanim);
 	}
 	MQFileDialogInfo dlginfo;
@@ -1193,9 +1239,11 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 		setting->Save("MtlFile", option.mtlfile);
 		setting->Save("HspFile", option.hspfile);
 		setting->Save("TexturePrefix", option.texture_prefix);
+		setting->Save("MaterialConv", option.material_conv);
 		if (option.bone_exists) {
 			setting->Save("OutputBone", option.output_bone);
 		}
+		setting->Save("BoneScaleRot", option.bone_scale_rot);
 		setting->Save("InputXmlAnimFile", option.input_xmlanim);
 		CloseSetting(setting);
 	}
@@ -2025,9 +2073,21 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 			for (int i = 0; i < jointCount; ++i) {
 				// TODO: グローバル位置の負
 				if (outputBone) {
-					identity[12] = -bone_param[i].org_pos.x * scaling;
-					identity[13] = -bone_param[i].org_pos.y * scaling;
-					identity[14] = -bone_param[i].org_pos.z * scaling;
+					if (useScaleRot) {
+						// 全部積み重ねた後に逆行列
+						MQMatrix inv;
+						bone_param[i].base_mtx.Inverse(inv);
+						for (int row = 0; row < 4; ++row) {
+							for (int col = 0; col < 4; ++col) {
+								identity[col + row * 4] = inv.t[col + row * 4];
+							}
+						}
+					}
+					else { // 平行移動のみ
+						identity[12] = -bone_param[i].org_pos.x * scaling;
+						identity[13] = -bone_param[i].org_pos.y * scaling;
+						identity[14] = -bone_param[i].org_pos.z * scaling;
+					}
 				}
 				fwrite(&identity, sizeof(float), 16, fh);
 			}
@@ -2056,7 +2116,8 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 				bone_param,
 				refTable, i,
 				bone_id_index,
-				scaling);
+				scaling,
+				useScaleRot);
 		}
 	}
 
