@@ -583,6 +583,18 @@ int GPBOptionDialog::addUIs(int parent_frame_id, MLanguage& language)
 	combo_hspfile->SetHintSizeRateX(8);
 	combo_hspfile->SetFillBeforeRate(1);
 
+	{
+		hframe = CreateHorizontalFrame(group);
+		CreateLabel(hframe, language.Search("MaterialConv"));
+
+		auto w = CreateComboBox(hframe);
+		w->AddItem(language.Search("Disable"));
+		w->AddItem(language.Search("Enable"));
+		w->SetHintSizeRateX(8);
+		w->SetFillBeforeRate(1);
+		this->combo_materialconv = w;
+	}
+
 	hframe = CreateHorizontalFrame(group);
 	CreateLabel(hframe, language.Search("Bone"));
 
@@ -594,6 +606,17 @@ int GPBOptionDialog::addUIs(int parent_frame_id, MLanguage& language)
 		combo_bone->SetFillBeforeRate(1);
 
 		combo_bone->AddChangedEvent(this, &GPBOptionDialog::ComboBoneChanged);
+	}
+
+	{
+		hframe = CreateHorizontalFrame(group);
+		CreateLabel(hframe, language.Search("BoneScaleRot"));
+
+		this->combo_bonescalerot = CreateComboBox(hframe);
+		combo_bonescalerot->AddItem(language.Search("Disable"));
+		combo_bonescalerot->AddItem(language.Search("Enable"));
+		combo_bonescalerot->SetHintSizeRateX(8);
+		combo_bonescalerot->SetFillBeforeRate(1);
 	}
 
 	{
@@ -744,8 +767,12 @@ GPBOptionDialog::GPBOptionDialog(int id, int parent_frame_id, ExportGPBPlugin *p
 
 BOOL GPBOptionDialog::ComboBoneChanged(MQWidgetBase *sender, MQDocument doc)
 {
-	this->combo_xmlanimfile->SetCurrentIndex(0);
-	this->combo_xmlanimfile->SetEnabled(this->combo_bone->GetCurrentIndex() != 0);
+	auto enable = this->combo_bone->GetCurrentIndex() != 0;
+
+	this->combo_bonescalerot->SetEnabled(enable);
+
+	this->combo_xmlanimfile->SetCurrentIndex(0); // 0 にする
+	this->combo_xmlanimfile->SetEnabled(enable);
 	return FALSE;
 }
 
@@ -1529,6 +1556,7 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 		materials.push_back(material);
 	}
 
+
 	// Face's vertices list 面頂点リストを生成する
 	DWORD face_vert_count = 0;
 	std::vector<int> material_used(numMat + 1, 0);
@@ -1610,13 +1638,46 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 	}
 	assert(face_vert_count == output_face_vert_count);
 
+	// ジョイント名リスト
+	int rootJointNum = 0;
+	std::vector<MString> jointNames;
+	if (outputBone) {
+		for (const auto& bone : bone_param) {
+			if (bone.parent == 0) {
+				rootJointNum += 1;
+			}
+			jointNames.push_back(bone.name_en);
+		}
+	}
+
+	for (const MString& jointName : jointNames) {
+		auto result = checkOver(jointName);
+		if (!result) {
+			continue;
+		}
+		MQWindow mainwin = MQWindow::GetMainWindow();
+		MString message = MString(language.Search("InvalidBoneChar"))
+			+ L"\n"
+			+ jointName;
+		MQDialog::MessageWarningBox(mainwin,
+			message.c_str(),
+			GetResourceString("Error"));
+		return FALSE;
+	}
+	auto jointNum = jointNames.size();
+
+
 	// 実際に有効な材質の個数カウント
 	DWORD enableMaterialNum = 0;
-	for (const auto& material : materials) {
+	for (auto& material : materials) {
 		if (material.enable) {
 			enableMaterialNum += 1;
 
-			{
+			if (option.material_conv) {
+				material.convName = MString::format(L"material_%d_%d",
+					enableMaterialNum,
+					jointNum);
+			} else {
 				auto result = checkOver(material.convName);
 				if (result) {
 					MQWindow mainwin = MQWindow::GetMainWindow();
@@ -1655,33 +1716,6 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 		}
 	}
 
-
-	// ジョイント名リスト
-	int rootJointNum = 0;
-	std::vector<MString> jointNames;
-	if (outputBone) {
-		for (const auto& bone : bone_param) {
-			if (bone.parent == 0) {
-				rootJointNum += 1;
-			}
-			jointNames.push_back(bone.name_en);
-		}
-	}
-
-	for (const MString& jointName : jointNames) {
-		auto result = checkOver(jointName);
-		if (!result) {
-			continue;
-		}
-		MQWindow mainwin = MQWindow::GetMainWindow();
-		MString message = MString(language.Search("InvalidBoneChar"))
-			+ L"\n"
-			+ jointName;
-		MQDialog::MessageWarningBox(mainwin,
-			message.c_str(),
-			GetResourceString("Error"));
-		return FALSE;
-	}
 
 	// 1つのアニメーションチャンクのデータ
 	ANIMATIONS animations;
