@@ -53,7 +53,10 @@ struct ANIMATIONCHANNEL {
 	/// </summary>
 	unsigned int attribVal;
 
-	std::vector<float> keytimes;
+	/// <summary>
+	/// 整数
+	/// </summary>
+	std::vector<unsigned int> keytimes;
 	/// <summary>
 	/// 一直線の方
 	/// </summary>
@@ -64,7 +67,10 @@ struct ANIMATIONCHANNEL {
 	std::vector<ONEVAL> vals;
 	std::vector<float> tangentsIn;
 	std::vector<float> tangentsOut;
-	std::vector<float> interpolations;
+	/// <summary>
+	/// 整数
+	/// </summary>
+	std::vector<unsigned int> interpolations;
 
 	ANIMATIONCHANNEL() {
 		attribVal = ROTMOV_VAL;

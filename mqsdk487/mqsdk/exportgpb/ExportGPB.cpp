@@ -10,7 +10,7 @@
 #define MY_FILETYPE "HSP GPB(*.gpb)"
 #define MY_EXT "gpb"
 
-#define IDENVER "0.7.1"
+#define IDENVER "0.7.2"
 
 // 0 だと無効化
 #define USESCALING (0)
@@ -2330,7 +2330,7 @@ bool ExportGPBPlugin::LoadBoneSettingFile()
 	return false; // 非対応
 
 
-	MQXmlDocument doc;
+	MQXmlDocument doc = MQCXmlDocument::Create();
 	auto result = doc->LoadFile(filename.toAnsiString().c_str());
 	if (result != TRUE) {
 #ifdef _WIN32
@@ -2373,7 +2373,7 @@ bool ExportGPBPlugin::LoadBoneSettingFile()
 int ExportGPBPlugin::loadAnimation(MString& animationFile, ANIMATIONS& animations) {
 	animations.anims.clear();
 
-	MQXmlDocument doc;
+	MQXmlDocument doc = MQCXmlDocument::Create();
 	auto result = doc->LoadFile(animationFile.toAnsiString().c_str());
 	if (result != TRUE) {
 		doc->DeleteThis();
@@ -2388,8 +2388,8 @@ int ExportGPBPlugin::loadAnimation(MString& animationFile, ANIMATIONS& animation
 
 	int ret = 0;
 
-	const auto anis = root->FirstChildElement("Animations");
-	if (anis == NULL) {
+	const auto anisEl = root->FirstChildElement("Animations");
+	if (anisEl == NULL) {
 		doc->DeleteThis();
 		return 0;
 	}
@@ -2398,18 +2398,20 @@ int ExportGPBPlugin::loadAnimation(MString& animationFile, ANIMATIONS& animation
 	//const auto anisid = anis->GetAttribute("id");
 	animations.id = L"__Animations__";
 
-	auto animelem = anis->FirstChildElement("Animation");
-	while (animelem != NULL) {
+	auto animElem = anisEl->FirstChildElement("Animation");
+	while (animElem != NULL) {
 		ANIMATION anim;
 
 		std::wstring animid;
-		animelem->GetAttribute(L"id", animid);
+		animElem->GetAttribute(L"id", animid);
 		anim.id = animid;
 		if (animid == L"animations") {
 			ret = 1;
 		}
 
-		auto chel = animelem->FirstChildElement("AnimationChannel");
+		const auto noLimit = 9999999;
+
+		auto chel = animElem->FirstChildElement("AnimationChannel");
 		while (chel != NULL) {
 			ANIMATIONCHANNEL ch;
 
@@ -2421,15 +2423,21 @@ int ExportGPBPlugin::loadAnimation(MString& animationFile, ANIMATIONS& animation
 
 			const auto ksElem = chel->FirstChildElement("keytimes");
 			const auto keytimesText = ksElem->GetTextW();
+			const auto ktcountText = MString(ksElem->GetAttribute(L"count"));
+			const auto ktcount = ktcountText.canParseInt() ? ktcountText.toInt() : noLimit;
 
 			const auto vsElem = chel->FirstChildElement("values");
 			const auto valuesText = vsElem->GetTextW();
+			const auto vcountText = MString(vsElem->GetAttribute(L"count"));
+			const auto vcount = vcountText.canParseInt() ? vcountText.toInt() : noLimit;
 
 			const auto itpsElem = chel->FirstChildElement("interpolations");
 			const auto intersText = itpsElem->GetTextW();
+			const auto icountText = MString(itpsElem->GetAttribute(L"count"));
+			const auto icount = icountText.canParseInt() ? icountText.toInt() : noLimit;
 
-			// "targetId"
-			// "targetAttrib"
+			// "targetId" "head" など
+			// "targetAttrib" "16 ANIMATE_ROTATE_TRANSLATE"
 			// "keytimes" count=""
 			// "values" count=""
 			// "tangentsIn" count="0"
@@ -2455,8 +2463,14 @@ int ExportGPBPlugin::loadAnimation(MString& animationFile, ANIMATIONS& animation
 					if (!vstr.canParseFloat()) {
 						continue;
 					}
-					auto v = vstr.toFloat();
-					ch.keytimes.push_back(v);
+					if (vstr.length() == 0) {
+						continue;
+					}
+
+					if (ch.keytimes.size() < ktcount) {
+						auto v = vstr.toFloat();
+						ch.keytimes.push_back((unsigned int)v);
+					}
 				}
 			}
 
@@ -2467,8 +2481,14 @@ int ExportGPBPlugin::loadAnimation(MString& animationFile, ANIMATIONS& animation
 					if (!vstr.canParseFloat()) {
 						continue;
 					}
-					auto v = vstr.toFloat();
-					ch.values.push_back(v);
+					if (vstr.length() == 0) {
+						continue;
+					}
+
+					if (ch.values.size() < vcount) {
+						auto v = vstr.toFloat();
+						ch.values.push_back(v);
+					}
 				}
 			}
 
@@ -2476,31 +2496,28 @@ int ExportGPBPlugin::loadAnimation(MString& animationFile, ANIMATIONS& animation
 				MString str = MString(intersText);
 				auto strs = str.split(L" ");
 				for (const auto& vstr : strs) {
-					if (!vstr.toInt()) {
+					if (!vstr.canParseFloat()) {
 						continue;
 					}
-					auto v = vstr.toInt();
-					ch.interpolations.push_back(v);
+					if (vstr.length() == 0) {
+						continue;
+					}
+
+					if (ch.interpolations.size() < icount) {
+						auto v = vstr.toFloat();
+						ch.interpolations.push_back((unsigned int)v);
+					}
 				}
 			}
 
 			anim.channels.push_back(ch);
 
-			// NOTE: chel は親を指定するのではないのか?
-			chel = chel->NextChildElement("AnimationChannel", chel);
+			chel = animElem->NextChildElement("AnimationChannel", chel);
 		}
 
-		/*
-		BoneNameSetting setting;
-		//setting.jp = MString::fromUtf8String(jp.c_str());
-
-		m_BoneNameSetting.push_back(setting);
-
-		if (root != nullptr) {
-			m_RootBoneName = setting;
-		}*/
-
 		animations.anims.push_back(anim);
+
+		animElem = anisEl->NextChildElement("Animation", animElem);
 	}
 
 	doc->DeleteThis();
