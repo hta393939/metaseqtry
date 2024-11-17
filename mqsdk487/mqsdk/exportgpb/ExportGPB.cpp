@@ -10,7 +10,7 @@
 #define MY_FILETYPE "HSP GPB(*.gpb)"
 #define MY_EXT "gpb"
 
-#define IDENVER "0.7.2"
+#define IDENVER "0.7.3"
 
 // 0 だと無効化
 #define USESCALING (0)
@@ -551,13 +551,13 @@ int GPBOptionDialog::addUIs(int parent_frame_id, MLanguage& language)
 {
 	MQFrame parent(parent_frame_id);
 
-	MQGroupBox* group = CreateGroupBox(&parent, language.Search("Option"));
+	MQFrame* standard = &parent;
 
 	MQFrame* hframe;
 
-	check_visible = CreateCheckBox(group, language.Search("VisibleOnly"));
+	check_visible = CreateCheckBox(standard, language.Search("VisibleOnly"));
 
-	hframe = CreateHorizontalFrame(group);
+	hframe = CreateHorizontalFrame(standard);
 	CreateLabel(hframe, language.Search("MtlFile"));
 	this->combo_mtlfile = CreateComboBox(hframe);
 	combo_mtlfile->AddItem(language.Search("FileOutNo"));
@@ -567,13 +567,13 @@ int GPBOptionDialog::addUIs(int parent_frame_id, MLanguage& language)
 	combo_mtlfile->SetHintSizeRateX(8);
 	combo_mtlfile->SetFillBeforeRate(1);
 
-	hframe = CreateHorizontalFrame(group);
+	hframe = CreateHorizontalFrame(standard);
 	CreateLabel(hframe, language.Search("TexturePrefix"));
 	this->edit_textureprefix = CreateEdit(hframe);
 	//edit_textureprefix->SetMaxAnsiLength(20);
 	edit_textureprefix->SetHorzLayout(LAYOUT_FILL);
 
-	hframe = CreateHorizontalFrame(group);
+	hframe = CreateHorizontalFrame(standard);
 	CreateLabel(hframe, language.Search("HspFile"));
 	this->combo_hspfile = CreateComboBox(hframe);
 	combo_hspfile->AddItem(language.Search("FileOutNo"));
@@ -584,7 +584,7 @@ int GPBOptionDialog::addUIs(int parent_frame_id, MLanguage& language)
 	combo_hspfile->SetFillBeforeRate(1);
 
 	{
-		hframe = CreateHorizontalFrame(group);
+		hframe = CreateHorizontalFrame(standard);
 		CreateLabel(hframe, language.Search("MaterialConv"));
 
 		auto w = CreateComboBox(hframe);
@@ -595,7 +595,7 @@ int GPBOptionDialog::addUIs(int parent_frame_id, MLanguage& language)
 		this->combo_materialconv = w;
 	}
 
-	hframe = CreateHorizontalFrame(group);
+	hframe = CreateHorizontalFrame(standard);
 	CreateLabel(hframe, language.Search("Bone"));
 
 	{
@@ -608,6 +608,8 @@ int GPBOptionDialog::addUIs(int parent_frame_id, MLanguage& language)
 		combo_bone->AddChangedEvent(this, &GPBOptionDialog::ComboBoneChanged);
 	}
 
+
+	MQGroupBox* group = CreateGroupBox(&parent, language.Search("BoneOption"));
 	{
 		hframe = CreateHorizontalFrame(group);
 		CreateLabel(hframe, language.Search("BoneScaleRot"));
