@@ -10,7 +10,7 @@
 #define MY_FILETYPE "HSP GPB(*.gpb)"
 #define MY_EXT "gpb"
 
-#define IDENVER "0.9.1"
+#define IDENVER "0.10.1"
 
 // 0 だと無効化
 #define USESCALING (0)
@@ -88,6 +88,51 @@ struct INDEXWEIGHT {
 		weight = 0.0f;
 	}
 };
+
+
+static int getRotTrans(const MQMatrix& mtx, /*MQuaternion& rot,*/ MQPoint& trans) {
+	const auto angle = mtx.GetRotation();
+	trans = mtx.GetTranslation();
+	return 1;
+}
+
+/// <summary>
+/// YXZ local
+/// </summary>
+/// <param name="ang"></param>
+/// <returns></returns>
+static std::vector<float> toQ(const MQAngle& ang) {
+	std::vector<float> ret;
+	ret.push_back(0.0f);
+	ret.push_back(0.0f);
+	ret.push_back(0.0f);
+	ret.push_back(1.0f);
+
+	auto ax = ang.pitch * 0.5f;
+	auto ay = ang.head * 0.5f;
+	auto az = ang.bank * 0.5f;
+	ret.push_back(  cosf(ax) * sinf(ay) * sinf(az) + sinf(ax) * cosf(ay) * cosf(az));
+	ret.push_back(- sinf(ax) * cosf(ay) * sinf(az) + cosf(ax) * sinf(ay) * cosf(az));
+	ret.push_back(  cosf(ax) * cosf(ay) * sinf(az) - sinf(ax) * sinf(ay) * cosf(az));
+	ret.push_back(  sinf(ax) * sinf(ay) * sinf(az) + cosf(ax) * cosf(ay) * cosf(az));
+
+	return ret;
+}
+
+/// <summary>
+/// MQMatrix を gpb の4x4行列の格納の仕方で書き出す
+/// </summary>
+/// <param name="src"></param>
+/// <returns></returns>
+static int matrixToGpb(const MQMatrix& src, float dst[16]) {
+	std::vector<float> ret;
+	for (int i = 0; i < 4; ++i) {
+		for (int j = 0; j < 4; ++j) {
+			dst[i * 4 + j] = src.t[i * 4 + j];
+		}
+	}
+	return 1;
+}
 
 
 static bool	MQPointFuzzyEqual(MQPoint A, MQPoint B)
@@ -262,7 +307,15 @@ struct GPBBoneParam {
 	// ボーンID. 0 は無効のような扱い
 	UINT id;
 	MQMatrix mtx;
+	/// <summary>
+	/// Bone Manager から取得できる行列
+	/// </summary>
 	MQMatrix base_mtx;
+	/// <summary>
+	/// 親行列で割った行列
+	/// </summary>
+	MQMatrix rel_mtx;
+
 	// 親ボーンID. 0 だと親は無い
 	UINT parent;
 	/// <summary>
@@ -308,6 +361,9 @@ struct GPBBoneParam {
 
 		refIndex = -1;
 		nodeType = GPBNODE_JOINT;
+
+		this->base_mtx.Identify();
+		this->rel_mtx.Identify();
 	}
 };
 
@@ -367,7 +423,8 @@ private:
 	int makeHSP(FILE* f,
 		const GPBBounding& bounding,
 		const MString& name,
-		const std::vector<MString>& boneNames);
+		const std::vector<MString>& boneNames,
+		const std::vector<GPBBoneParam>& bones);
 
 	/// <summary>
 	/// ノード一つ分
@@ -472,18 +529,25 @@ struct CreateDialogOptionParam
 	/// </summary>
 	int bone_scale_rot;
 
+	/// <summary>
+	/// 0: 変えない, 1: 変える
+	/// </summary>
+	int bone_conv = 0;
+
 	int additive_info = 0;
 };
 
 
-
+/// <summary>
+/// GUIパーツを格納するクラス
+/// MQMemo は複数行テキスト
+/// </summary>
 class GPBOptionDialog : public MQDialog
 {
 public:
 	MQCheckBox *check_visible;
 	MQComboBox *combo_bone;
 	MQEdit *edit_textureprefix;
-	//MQMemo *memo_comment; // 広いのが Memo か...
 
 	MQComboBox* combo_mtlfile;
 	MQComboBox* combo_hspfile;
@@ -491,6 +555,8 @@ public:
 
 	MQComboBox* combo_materialconv;
 	MQComboBox* combo_bonescalerot;
+
+	MQComboBox* combo_boneconv;
 
 #if USEMYDIALOG!=0
 	MQButton* btn_ok;
@@ -553,33 +619,42 @@ int GPBOptionDialog::addUIs(int parent_frame_id, MLanguage& language)
 
 	MQFrame* hframe;
 
-	check_visible = CreateCheckBox(&parent, language.Search("VisibleOnly"));
+	this->check_visible = CreateCheckBox(&parent, language.Search("VisibleOnly"));
 
-	hframe = CreateHorizontalFrame(&parent);
-	CreateLabel(hframe, language.Search("MtlFile"));
-	this->combo_mtlfile = CreateComboBox(hframe);
-	combo_mtlfile->AddItem(language.Search("FileOutNo"));
-	combo_mtlfile->AddItem(language.Search("FileOutForce"));
-	combo_mtlfile->AddItem(language.Search("FileOutConfirm"));
-	combo_mtlfile->AddItem(language.Search("FileOutOWForbidden"));
-	combo_mtlfile->SetHintSizeRateX(8);
-	combo_mtlfile->SetFillBeforeRate(1);
+	{
+		hframe = CreateHorizontalFrame(&parent);
+		CreateLabel(hframe, language.Search("MtlFile"));
+		auto w = CreateComboBox(hframe);
+		w->AddItem(language.Search("FileOutNo"));
+		w->AddItem(language.Search("FileOutForce"));
+		w->AddItem(language.Search("FileOutConfirm"));
+		w->AddItem(language.Search("FileOutOWForbidden"));
+		w->SetHintSizeRateX(8);
+		w->SetFillBeforeRate(1);
+		this->combo_mtlfile = w;
+	}
 
-	hframe = CreateHorizontalFrame(&parent);
-	CreateLabel(hframe, language.Search("TexturePrefix"));
-	this->edit_textureprefix = CreateEdit(hframe);
-	//edit_textureprefix->SetMaxAnsiLength(20);
-	edit_textureprefix->SetHorzLayout(LAYOUT_FILL);
+	{
+		hframe = CreateHorizontalFrame(&parent);
+		CreateLabel(hframe, language.Search("TexturePrefix"));
+		auto w = CreateEdit(hframe);
+		//w->SetMaxAnsiLength(20);
+		w->SetHorzLayout(LAYOUT_FILL);
+		this->edit_textureprefix = w;
+	}
 
-	hframe = CreateHorizontalFrame(&parent);
-	CreateLabel(hframe, language.Search("HspFile"));
-	this->combo_hspfile = CreateComboBox(hframe);
-	combo_hspfile->AddItem(language.Search("FileOutNo"));
-	combo_hspfile->AddItem(language.Search("FileOutForce"));
-	combo_hspfile->AddItem(language.Search("FileOutConfirm"));
-	combo_hspfile->AddItem(language.Search("FileOutOWForbidden"));
-	combo_hspfile->SetHintSizeRateX(8);
-	combo_hspfile->SetFillBeforeRate(1);
+	{
+		hframe = CreateHorizontalFrame(&parent);
+		CreateLabel(hframe, language.Search("HspFile"));
+		auto w = CreateComboBox(hframe);
+		w->AddItem(language.Search("FileOutNo"));
+		w->AddItem(language.Search("FileOutForce"));
+		w->AddItem(language.Search("FileOutConfirm"));
+		w->AddItem(language.Search("FileOutOWForbidden"));
+		w->SetHintSizeRateX(8);
+		w->SetFillBeforeRate(1);
+		this->combo_hspfile = w;
+	}
 
 	{
 		hframe = CreateHorizontalFrame(&parent);
@@ -593,17 +668,19 @@ int GPBOptionDialog::addUIs(int parent_frame_id, MLanguage& language)
 		this->combo_materialconv = w;
 	}
 
-	hframe = CreateHorizontalFrame(&parent);
-	CreateLabel(hframe, language.Search("Bone"));
-
 	{
-		this->combo_bone = CreateComboBox(hframe);
-		combo_bone->AddItem(language.Search("Disable"));
-		combo_bone->AddItem(language.Search("Enable"));
-		combo_bone->SetHintSizeRateX(8);
-		combo_bone->SetFillBeforeRate(1);
+		hframe = CreateHorizontalFrame(&parent);
+		CreateLabel(hframe, language.Search("Bone"));
 
-		combo_bone->AddChangedEvent(this, &GPBOptionDialog::ComboBoneChanged);
+		auto w = this->combo_bone = CreateComboBox(hframe);
+		w->AddItem(language.Search("Disable"));
+		w->AddItem(language.Search("Enable"));
+		w->SetHintSizeRateX(8);
+		w->SetFillBeforeRate(1);
+
+		w->AddChangedEvent(this, &GPBOptionDialog::ComboBoneChanged);
+
+		this->combo_bone = w;
 	}
 
 	MQGroupBox* group = CreateGroupBox(&parent, language.Search("BoneTitle"));
@@ -611,21 +688,36 @@ int GPBOptionDialog::addUIs(int parent_frame_id, MLanguage& language)
 		hframe = CreateHorizontalFrame(group);
 		CreateLabel(hframe, language.Search("BoneScaleRot"));
 
-		this->combo_bonescalerot = CreateComboBox(hframe);
-		combo_bonescalerot->AddItem(language.Search("Disable"));
-		combo_bonescalerot->AddItem(language.Search("Enable"));
-		combo_bonescalerot->SetHintSizeRateX(8);
-		combo_bonescalerot->SetFillBeforeRate(1);
+		auto w = CreateComboBox(hframe);
+		w->AddItem(language.Search("Disable"));
+		w->AddItem(language.Search("Enable"));
+		w->SetHintSizeRateX(8);
+		w->SetFillBeforeRate(1);
+		this->combo_bonescalerot = w;
+	}
+
+	{
+		hframe = CreateHorizontalFrame(group);
+		CreateLabel(hframe, language.Search("BoneConv"));
+
+		auto w = CreateComboBox(hframe);
+		w->AddItem(language.Search("Disable"));
+		w->AddItem(language.Search("Enable"));
+		w->SetHintSizeRateX(8);
+		w->SetFillBeforeRate(1);
+
+		this->combo_boneconv = w;
 	}
 
 	{
 		hframe = CreateHorizontalFrame(group);
 		CreateLabel(hframe, language.Search("XmlAnimationFile"));
-		this->combo_xmlanimfile = CreateComboBox(hframe);
-		combo_xmlanimfile->AddItem(language.Search("NotUse"));
-		combo_xmlanimfile->AddItem(language.Search("Use"));
-		combo_xmlanimfile->SetHintSizeRateX(8);
-		combo_xmlanimfile->SetFillBeforeRate(1);
+		auto w = CreateComboBox(hframe);
+		w->AddItem(language.Search("NotUse"));
+		w->AddItem(language.Search("Use"));
+		w->SetHintSizeRateX(8);
+		w->SetFillBeforeRate(1);
+		this->combo_xmlanimfile = w;
 	}
 
 #if 0
@@ -650,6 +742,7 @@ int GPBOptionDialog::setValues(CreateDialogOptionParam *option)
 	this->combo_hspfile->SetEnabled(true);
 	this->combo_hspfile->SetCurrentIndex(option->hspfile);
 
+	// bone 有効時
 	bool boneui = (option->output_bone != 0 && option->bone_exists != 0);
 
 	this->combo_bone->SetEnabled(option->bone_exists);
@@ -661,10 +754,14 @@ int GPBOptionDialog::setValues(CreateDialogOptionParam *option)
 
 		this->combo_xmlanimfile->SetEnabled(boneui);
 		this->combo_xmlanimfile->SetCurrentIndex(option->input_xmlanim);
+
+		this->combo_boneconv->SetEnabled(/*boneui*/false);
+		this->combo_boneconv->SetCurrentIndex(option->bone_conv);
 	}
 
 	this->combo_materialconv->SetEnabled(true);
 	this->combo_materialconv->SetCurrentIndex(option->material_conv);
+
 
 	return 0;
 }
@@ -684,6 +781,8 @@ int GPBOptionDialog::getValues(CreateDialogOptionParam *option)
 
 	option->material_conv = this->combo_materialconv->GetCurrentIndex();
 	option->bone_scale_rot = this->combo_bonescalerot->GetCurrentIndex();
+
+	option->bone_conv = this->combo_boneconv->GetCurrentIndex();
 
 	option->additive_info = this->canceled;
 
@@ -925,7 +1024,7 @@ enum AttrType
 static void calcRadius(GPBBounding& bounding) {
 	float half[3];
 	for (int j = 0; j < 3; ++j) {
-		bounding.center[j] = (bounding.min[j] + bounding.max[j]) * 0.5;
+		bounding.center[j] = (bounding.min[j] + bounding.max[j]) * 0.5f;
 		half[j] = bounding.max[j] - bounding.center[j];
 	}
 	bounding.radius = sqrtf(half[0] * half[0] + half[1] * half[1] + half[2] * half[2]);
@@ -971,7 +1070,6 @@ static int checkOver(const MString& text) {
 	return 0;
 }
 
-
 int ExportGPBPlugin::writeJoint(FILE* fh,
 	std::vector<GPBBoneParam>& bone_param,
 	std::vector<GPBRef>& refTable,
@@ -1005,6 +1103,7 @@ int ExportGPBPlugin::writeJoint(FILE* fh,
 				pParent->base_mtx.Inverse(parentInv);
 				MQMatrix localMtx;
 				localMtx = parentInv * curBone.base_mtx;
+				curBone.rel_mtx = localMtx;
 				for (int row = 0; row < 4; ++row) {
 					for (int col = 0; col < 4; ++col) {
 						material[row * 4 + col] = localMtx.t[row*4+col];
@@ -1031,7 +1130,7 @@ int ExportGPBPlugin::writeJoint(FILE* fh,
 		// 子ジョイント数
 		DWORD childNum = curBone.children.size();
 		fwrite(&childNum, sizeof(DWORD), 1, fh);
-		for (int i = 0; i < childNum; ++i) {
+		for (unsigned int i = 0; i < childNum; ++i) {
 			this->writeJoint(fh,
 				bone_param, refTable,
 				curBone.children[i],
@@ -1196,6 +1295,7 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 	option.bone_exists = (bone_num > 0);
 	option.output_bone = 0;
 	option.bone_scale_rot = 1;
+	option.bone_conv = 0;
 
 	option.hspfile = FILEOUT_CONFIRM;
 	// ファイル名だけ取り出して20文字に制限
@@ -1212,6 +1312,7 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 		setting->Load("HspFile", option.hspfile, option.hspfile);
 		setting->Load("TexturePrefix", option.texture_prefix, option.texture_prefix);
 		setting->Load("MaterialConv", option.material_conv, option.material_conv);
+		setting->Load("BoneConv", option.bone_conv, option.bone_conv);
 		setting->Load("OutputBone", option.output_bone, option.output_bone);
 		setting->Load("BoneScaleRot", option.bone_scale_rot, option.bone_scale_rot);
 		setting->Load("InputXmlAnimFile", option.input_xmlanim, option.input_xmlanim);
@@ -1266,6 +1367,7 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 		setting->Save("HspFile", option.hspfile);
 		setting->Save("TexturePrefix", option.texture_prefix);
 		setting->Save("MaterialConv", option.material_conv);
+		setting->Save("BoneConv", option.bone_conv);
 		if (option.bone_exists) {
 			setting->Save("OutputBone", option.output_bone);
 		}
@@ -1434,7 +1536,7 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 			GPBRef ref;
 			ref.type = REF_NODE;
 			ref.name = bone_param[i].name_en;
-			bone_param[i].refIndex = refTable.size();
+			bone_param[i].refIndex = (int)refTable.size();
 			refTable.push_back(ref);
 		}
 
@@ -1863,7 +1965,7 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 
 	DWORD meshNum = 1;
 	fwrite(&meshNum, sizeof(DWORD), 1, fh);
-	for (int i = 0; i < meshNum; i++)
+	for (unsigned int i = 0; i < meshNum; i++)
 	{
 		refTable[indexMesh].offset = ftell(fh);
 
@@ -2000,7 +2102,7 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 				float indices[4] = { 0, 0, 0, 0 };
 				float weight[4] = { 1.0, 0.0, 0.0, 0.0 };
 				for (int k = 0; k < 4; ++k) {
-					indices[k] = iws[k].sortedIndex;
+					indices[k] = (float)iws[k].sortedIndex;
 					weights[k] = iws[k].weight;
 				}
 
@@ -2066,7 +2168,7 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 		refTable[indexNode].offset = offset;
 
 		fwrite(&nodeType, sizeof(DWORD), 1, fh);
-		fwrite(&identity, sizeof(float), 16, fh);
+		fwrite(&identity, sizeof(float), 16, fh); // 恒等行列
 
 		MAnsiString parentStr("");
 		DWORD parentByteNum = parentStr.length();
@@ -2090,7 +2192,7 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 		BYTE hasSkin = 1;
 		fwrite(&hasSkin, sizeof(BYTE), 1, fh);
 		if (hasSkin) {
-			fwrite(&identity, sizeof(float), 16, fh); // bindShape
+			fwrite(&identity, sizeof(float), 16, fh); // bindShape 恒等行列
 
 			DWORD jointCount = jointNames.size();
 			fwrite(&jointCount, sizeof(DWORD), 1, fh);
@@ -2103,26 +2205,30 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 
 			DWORD inverseNum = jointCount * 16;
 			fwrite(&inverseNum, sizeof(DWORD), 1, fh);
-			for (int i = 0; i < jointCount; ++i) {
+			for (unsigned int i = 0; i < jointCount; ++i) {
 				// TODO: グローバル位置の負
+				MQMatrix matrix;
 				if (outputBone) {
 					if (useScaleRot) {
 						// 全部積み重ねた後に逆行列
 						MQMatrix inv;
 						bone_param[i].base_mtx.Inverse(inv);
+						matrixToGpb(inv, matrix.t);
+						/*
 						for (int row = 0; row < 4; ++row) {
 							for (int col = 0; col < 4; ++col) {
 								identity[col + row * 4] = inv.t[col + row * 4];
 							}
-						}
+						}*/
 					}
 					else { // 平行移動のみ
-						identity[12] = -bone_param[i].org_pos.x * scaling;
-						identity[13] = -bone_param[i].org_pos.y * scaling;
-						identity[14] = -bone_param[i].org_pos.z * scaling;
+						matrix.Identify();
+						matrix.t[12] = -bone_param[i].org_pos.x * scaling;
+						matrix.t[13] = -bone_param[i].org_pos.y * scaling;
+						matrix.t[14] = -bone_param[i].org_pos.z * scaling;
 					}
 				}
-				fwrite(&identity, sizeof(float), 16, fh);
+				fwrite(&matrix.t, sizeof(float), 16, fh);
 			}
 		}
 
@@ -2193,8 +2299,11 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 		if (!outputBone) {
 			jointNames.clear();
 		}
-		this->makeHSP(fhHsp, wholeBounding, name,
-			jointNames);
+		this->makeHSP(fhHsp,
+			wholeBounding,
+			name,
+			jointNames,
+			bone_param);
 	}
 
 
@@ -2229,7 +2338,7 @@ int ExportGPBPlugin::writeAnimations(FILE* fh,
 
 	DWORD animationNum = animations.anims.size();
 	fwrite(&animationNum, sizeof(DWORD), 1, fh);
-	for (int i = 0; i < animationNum; ++i) {
+	for (unsigned int i = 0; i < animationNum; ++i) {
 		const auto anim = animations.anims[i];
 
 		MAnsiString animationName = MString(anim.id).toAnsiString(); // "animations"; // この名前であることが必要
@@ -2239,7 +2348,7 @@ int ExportGPBPlugin::writeAnimations(FILE* fh,
 
 		DWORD channelNum = anim.channels.size();
 		fwrite(&channelNum, sizeof(DWORD), 1, fh);
-		for (int j = 0; j < channelNum; ++j) {
+		for (unsigned int j = 0; j < channelNum; ++j) {
 			const auto ch = anim.channels[j];
 			MAnsiString targetName = MString(ch.targetId).toAnsiString();
 
@@ -2291,21 +2400,21 @@ int ExportGPBPlugin::writeAnimations(FILE* fh,
 			{
 				DWORD tin = 0;
 				fwrite(&tin, sizeof(DWORD), 1, fh);
-				for (int k = 0; k < tin; ++k) {
+				for (unsigned int k = 0; k < tin; ++k) {
 					//fwrite(&foo, sizeof(), 1, fh);
 				}
 			}
 			{
 				DWORD tout = 0;
 				fwrite(&tout, sizeof(DWORD), 1, fh);
-				for (int k = 0; k < tout; ++k) {
+				for (unsigned int k = 0; k < tout; ++k) {
 					//fwrite(&foo, sizeof(), 1, fh);
 				}
 			}
 			{
 				DWORD inum = 1;
 				fwrite(&inum, sizeof(DWORD), 1, fh);
-				for (int k = 0; k < inum; ++k) {
+				for (unsigned int k = 0; k < inum; ++k) {
 					// tamane2 では type 1 BSPLINE が格納されているが
 					// Curve::LINEAR しか対応してないらしい
 					DWORD itype = 1;
@@ -2672,8 +2781,11 @@ material textured\n\
 
 
 // .hsp は res フォルダの一つ上に配置しないといけない
-int ExportGPBPlugin::makeHSP(FILE* f, const GPBBounding& bounding, const MString& name,
-	const std::vector<MString>& boneNames) {
+int ExportGPBPlugin::makeHSP(FILE* f,
+	const GPBBounding& bounding,
+	const MString& name,
+	const std::vector<MString>& boneNames,
+	const std::vector<GPBBoneParam>& bones) {
 	float fov = 45.0f * 3.141592f / 180.0f;
 	float width = bounding.max[0] - bounding.min[0];
 	float height = bounding.max[1] - bounding.min[1];
@@ -2681,7 +2793,7 @@ int ExportGPBPlugin::makeHSP(FILE* f, const GPBBounding& bounding, const MString
 	// 横長の場合のみ正確
 	float dist = fmaxf(width, height) * 1.125f * 0.5f / tanf(fov * 0.5f) + thick * 0.5f;
 
-	int boneNum = boneNames.size();
+	int boneNum = (int)boneNames.size();
 	int boneIndex = (boneNum >= 2) ? 1 : 0;
 
 	FMES(f, "\
@@ -2700,9 +2812,11 @@ name.toAnsiString().c_str(), IDENVER);
 	if (boneNum > 0) {
 		FMES(f, "\n\
 	sdim bone_names, 260, %d\n\
+	ddim bone_trans, 3, %d\n\
+	ddim bone_rot, 4, %d\n\
 	gosub *set_bones\n\
 	bone_num = length(bone_names)\n\
-", boneNum);
+", boneNum, boneNum, boneNum);
 	}
 
 	FMES(f, "\
@@ -2741,7 +2855,11 @@ name.toAnsiString().c_str(), IDENVER);
 		for (int i = 0; i < boneNum; ++i) {
 			FMES(f, "\
 	bone_names(%d) = \"%s\"\n\
-", i, boneNames[i].toAnsiString().c_str());
+	bone_trans(0, %d) = %f, %f, %f\n\
+	bone_rot(0, %d) = %f, %f, %f, %f\n\
+", i, boneNames[i].toAnsiString().c_str(),
+	i, 0.0f, 0.0f, 0.0f,
+	i, 0.0f, 0.f, 0.0f, 1.0f);
 		}
 
 		FMES(f, "\

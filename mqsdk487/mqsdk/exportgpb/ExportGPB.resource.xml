@@ -30,6 +30,7 @@
     <string id="Use">使用する</string>
     <string id="BoneScaleRot">ボーンのスケールと回転の採用</string>
     <string id="MaterialConv">マテリアル名修正</string>
+	<string id="BoneConv">ボーン名修正</string>
   </resource>
   <resource language="English" default="1">
     <string id="Option">GPB options</string>
@@ -61,5 +62,6 @@
     <string id="Use">Use</string>
     <string id="BoneScaleRot">Scale and rotation for bone</string>
     <string id="MaterialConv">Convert material name</string>
+	<string id="BoneConv">Convert bone name</string>
   </resource>
 </resources>

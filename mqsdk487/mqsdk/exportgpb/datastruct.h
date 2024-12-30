@@ -74,7 +74,7 @@ struct ANIMATIONCHANNEL {
 
 	ANIMATIONCHANNEL() {
 		attribVal = ROTMOV_VAL;
-		interpolations.push_back(1.0f);
+		interpolations.push_back(1);
 	}
 };
 
