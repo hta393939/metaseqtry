@@ -773,6 +773,9 @@ int GPBOptionDialog::getValues(CreateDialogOptionParam *option)
 #if (USEEXTENDEDUI!=0)
 	option->bone_scale_rot = this->combo_bonescalerot->GetCurrentIndex();
 	option->bone_conv = this->combo_boneconv->GetCurrentIndex();
+#else
+	option->bone_scale_rot = 0;
+	option->bone_conv = 0;
 #endif
 
 	option->additive_info = this->canceled;
@@ -1224,7 +1227,7 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 	}
 
 	// ボーンのスケールと回転を有効にするか
-	bool useScaleRot = option.bone_scale_rot;
+	bool useScaleRot = (option.bone_scale_rot != 0);
 
 	//// 処理後半
 
@@ -2142,6 +2145,7 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 		MString name = MString(L"res/") + MFileUtil::extractFileNameOnly(filename);
 		if (!outputBone) {
 			jointNames.clear();
+			bone_param.clear();
 		}
 		this->makeHSP(fhHsp,
 			wholeBounding,
@@ -2677,11 +2681,22 @@ name.toAnsiString().c_str(), IDENVER);
 	gplookat camera_id, vals(0), vals(1), vals(2)\n\
 *main\n\
 	getreq time, SYSREQ_TIMER\n\
-	val = sin(double(time \\ 10000) / 10000.0 * M_PI * 2.0) / 8.0\n\
+	ang = double(time \\ 10000) / 10000.0 * M_PI * 2.0\n\
+	val = sin(ang) / 8.0\n\
 	redraw 0\n\
 	repeat bone_num\n\
 		gpnodeinfo result, id, GPNODEINFO_NODE, bone_names(cnt)\n\
-		setangy result, val, val, val\n\
+		if 1 {\n\
+			setangy result, val, val, val\n\
+		} else {\n\
+			if 1 {\n\
+				val = sin(ang) * 10.0\n\
+				x = bone_trans(0, cnt) + val\n\
+				y = bone_trans(1, cnt) + val\n\
+				z = bone_trans(2, cnt) + val\n\
+				setpos result, x, y, z\n\
+			}\n\
+		}\n\
 	loop\n\
 	gpdraw\n\
 	pos 8, 8\n\
@@ -2700,20 +2715,31 @@ name.toAnsiString().c_str(), IDENVER);
 			const auto bone = bones[i];
 			const auto trans = bone.rel_mtx.GetTranslation();
 			const auto rot = _toQ(bone.rel_mtx.GetRotation());
+#if 0
+			FMES(f, "\
+	bone_names(%d) = \"%s\"\n\
+	bone_trans(0, %d) = %f, %f, %f\n\
+", i, boneNames[i].toAnsiString().c_str(),
+i, trans.x, trans.y, trans.z);
+#else
 			FMES(f, "\
 	bone_names(%d) = \"%s\"\n\
 	bone_trans(0, %d) = %f, %f, %f\n\
 	bone_rot(0, %d) = %f, %f, %f, %f\n\
 ", i, boneNames[i].toAnsiString().c_str(),
 	i, trans.x, trans.y, trans.z,
-	i, rot[0], rot[1], rot[2], rot[3]);
+	i, rot[0], rot[1], rot[2], rot[3]
+			);
+#endif
 
+#if 0
 			FMES(f, "\
 	// %f %f %f,  %f %f %f,  %f %f %f\n\
 ",
 	bone.rel_mtx.t[0], bone.rel_mtx.t[5], bone.rel_mtx.t[10],
 	bone.rel_mtx.t[3], bone.rel_mtx.t[7], bone.rel_mtx.t[11],
 	bone.rel_mtx.t[12], bone.rel_mtx.t[13], bone.rel_mtx.t[14]);
+#endif
 		}
 
 		FMES(f, "\
