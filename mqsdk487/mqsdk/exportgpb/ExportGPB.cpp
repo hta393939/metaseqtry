@@ -99,13 +99,8 @@ static int getRotTrans(const MQMatrix& mtx, /*MQuaternion& rot,*/ MQPoint& trans
 /// </summary>
 /// <param name="ang"></param>
 /// <returns></returns>
-static std::vector<float> toQ(const MQAngle& ang) {
+static std::vector<float> _toQ(const MQAngle& ang) {
 	std::vector<float> ret;
-	ret.push_back(0.0f);
-	ret.push_back(0.0f);
-	ret.push_back(0.0f);
-	ret.push_back(1.0f);
-
 	auto ax = ang.pitch * 0.5f;
 	auto ay = ang.head * 0.5f;
 	auto az = ang.bank * 0.5f;
@@ -113,7 +108,6 @@ static std::vector<float> toQ(const MQAngle& ang) {
 	ret.push_back(- sinf(ax) * cosf(ay) * sinf(az) + cosf(ax) * sinf(ay) * cosf(az));
 	ret.push_back(  cosf(ax) * cosf(ay) * sinf(az) - sinf(ax) * sinf(ay) * cosf(az));
 	ret.push_back(  sinf(ax) * sinf(ay) * sinf(az) + cosf(ax) * cosf(ay) * cosf(az));
-
 	return ret;
 }
 
@@ -122,7 +116,7 @@ static std::vector<float> toQ(const MQAngle& ang) {
 /// </summary>
 /// <param name="src"></param>
 /// <returns></returns>
-static int matrixToGpb(const MQMatrix& src, float dst[16]) {
+static int _matrixToGpb(const MQMatrix& src, float dst[16]) {
 	std::vector<float> ret;
 	for (int i = 0; i < 4; ++i) {
 		for (int j = 0; j < 4; ++j) {
@@ -954,12 +948,15 @@ int ExportGPBPlugin::writeJoint(FILE* fh,
 				pParent->base_mtx.Inverse(parentInv);
 				MQMatrix localMtx;
 				localMtx = parentInv * curBone.base_mtx;
-				curBone.rel_mtx = localMtx;
+				//curBone.rel_mtx = localMtx;
 				for (int row = 0; row < 4; ++row) {
 					for (int col = 0; col < 4; ++col) {
-						material[row * 4 + col] = localMtx.t[row*4+col];
+						const auto sv = localMtx.t[row * 4 + col];
+						//material[row * 4 + col] = sv;
+						curBone.rel_mtx.t[row * 4 + col] = sv;
 					}
 				}
+				_matrixToGpb(localMtx, material);
 			}
 			else {
 				material[12] = (curBone.org_pos.x - pParent->org_pos.x) * scaling;
@@ -1051,8 +1048,7 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 
 	// ボーン処理をトータルで有効にするかどうか
 	bool outputBone = false;
-	// ボーンのスケールと回転を有効にするか
-	bool useScaleRot = false;
+
 
 	int indexMesh = 0;
 	int indexScene = 1;
@@ -1209,6 +1205,9 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 		bone_num = 0;
 		bone_object_num = 0;
 	}
+
+	// ボーンのスケールと回転を有効にするか
+	bool useScaleRot = option.bone_scale_rot;
 
 	//// 処理後半
 
@@ -2041,7 +2040,7 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 						// 全部積み重ねた後に逆行列
 						MQMatrix inv;
 						bone_param[i].base_mtx.Inverse(inv);
-						matrixToGpb(inv, matrix.t);
+						_matrixToGpb(inv, matrix.t);
 						/*
 						for (int row = 0; row < 4; ++row) {
 							for (int col = 0; col < 4; ++col) {
@@ -2681,13 +2680,23 @@ name.toAnsiString().c_str(), IDENVER);
 *set_bones\n\
 ");
 		for (int i = 0; i < boneNum; ++i) {
+			const auto bone = bones[i];
+			const auto trans = bone.rel_mtx.GetTranslation();
+			const auto rot = _toQ(bone.rel_mtx.GetRotation());
 			FMES(f, "\
 	bone_names(%d) = \"%s\"\n\
 	bone_trans(0, %d) = %f, %f, %f\n\
 	bone_rot(0, %d) = %f, %f, %f, %f\n\
 ", i, boneNames[i].toAnsiString().c_str(),
-	i, 0.0f, 0.0f, 0.0f,
-	i, 0.0f, 0.f, 0.0f, 1.0f);
+	i, trans.x, trans.y, trans.z,
+	i, rot[0], rot[1], rot[2], rot[3]);
+
+			FMES(f, "\
+	// %f %f %f,  %f %f %f,  %f %f %f\n\
+",
+	bone.rel_mtx.t[0], bone.rel_mtx.t[4], bone.rel_mtx.t[8],
+	bone.rel_mtx.t[3], bone.rel_mtx.t[7], bone.rel_mtx.t[11],
+	bone.rel_mtx.t[12], bone.rel_mtx.t[13], bone.rel_mtx.t[14]);
 		}
 
 		FMES(f, "\
