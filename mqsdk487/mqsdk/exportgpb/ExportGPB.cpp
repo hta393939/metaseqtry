@@ -15,6 +15,9 @@
 // 0 だと無効化
 #define USESCALING (0)
 
+// 1 だと拡張UI有効
+#define USEEXTENDEDUI (0)
+
 // $(ProjectDir)$(Platform)\$(Configuration)\
 // $(OutDir)$(TargetName)$(TargetExt)
 
@@ -513,7 +516,7 @@ struct CreateDialogOptionParam
 	/// <summary>
 	/// 1: スケールと回転も採用する
 	/// </summary>
-	int bone_scale_rot;
+	int bone_scale_rot = 0;
 
 	/// <summary>
 	/// 0: 変えない, 1: 変える
@@ -540,9 +543,11 @@ public:
 	MQComboBox* combo_xmlanimfile;
 
 	MQComboBox* combo_materialconv;
-	MQComboBox* combo_bonescalerot;
 
+#if (USEEXTENDEDUI!=0)
+	MQComboBox* combo_bonescalerot;
 	MQComboBox* combo_boneconv;
+#endif
 
 	MQButton* btn_ok;
 
@@ -665,6 +670,7 @@ int GPBOptionDialog::addUIs(int parent_frame_id, MLanguage& language)
 	}
 
 	MQGroupBox* group = CreateGroupBox(&parent, language.Search("BoneTitle"));
+#if (USEEXTENDEDUI!=0)
 	{
 		hframe = CreateHorizontalFrame(group);
 		CreateLabel(hframe, language.Search("BoneScaleRot"));
@@ -689,7 +695,7 @@ int GPBOptionDialog::addUIs(int parent_frame_id, MLanguage& language)
 
 		this->combo_boneconv = w;
 	}
-
+#endif
 	{
 		hframe = CreateHorizontalFrame(group);
 		CreateLabel(hframe, language.Search("XmlAnimationFile"));
@@ -730,14 +736,16 @@ int GPBOptionDialog::setValues(CreateDialogOptionParam *option)
 	this->combo_bone->SetCurrentIndex(boneui ? 1 : 0);
 
 	{
-		this->combo_bonescalerot->SetEnabled(boneui);
-		this->combo_bonescalerot->SetCurrentIndex(option->bone_scale_rot);
-
 		this->combo_xmlanimfile->SetEnabled(boneui);
 		this->combo_xmlanimfile->SetCurrentIndex(option->input_xmlanim);
 
-		this->combo_boneconv->SetEnabled(/*boneui*/false);
+#if (USEEXTENDEDUI!=0)
+		this->combo_bonescalerot->SetEnabled(boneui);
+		this->combo_bonescalerot->SetCurrentIndex(option->bone_scale_rot);
+
+		this->combo_boneconv->SetEnabled(boneui);
 		this->combo_boneconv->SetCurrentIndex(option->bone_conv);
+#endif
 	}
 
 	this->combo_materialconv->SetEnabled(true);
@@ -761,9 +769,11 @@ int GPBOptionDialog::getValues(CreateDialogOptionParam *option)
 	option->input_xmlanim = this->combo_xmlanimfile->GetCurrentIndex();
 
 	option->material_conv = this->combo_materialconv->GetCurrentIndex();
-	option->bone_scale_rot = this->combo_bonescalerot->GetCurrentIndex();
 
+#if (USEEXTENDEDUI!=0)
+	option->bone_scale_rot = this->combo_bonescalerot->GetCurrentIndex();
 	option->bone_conv = this->combo_boneconv->GetCurrentIndex();
+#endif
 
 	option->additive_info = this->canceled;
 
@@ -775,7 +785,10 @@ BOOL GPBOptionDialog::ComboBoneChanged(MQWidgetBase *sender, MQDocument doc)
 {
 	auto enable = this->combo_bone->GetCurrentIndex() != 0;
 
+#if (USEEXTENDEDUI!=0)
 	this->combo_bonescalerot->SetEnabled(enable);
+	this->combo_boneconv->SetEnabled(enable);
+#endif
 
 	this->combo_xmlanimfile->SetCurrentIndex(0); // 0 にする
 	this->combo_xmlanimfile->SetEnabled(enable);
@@ -962,6 +975,10 @@ int ExportGPBPlugin::writeJoint(FILE* fh,
 				material[12] = (curBone.org_pos.x - pParent->org_pos.x) * scaling;
 				material[13] = (curBone.org_pos.y - pParent->org_pos.y) * scaling;
 				material[14] = (curBone.org_pos.z - pParent->org_pos.z) * scaling;
+
+				curBone.rel_mtx.t[12] = material[12];
+				curBone.rel_mtx.t[13] = material[13];
+				curBone.rel_mtx.t[14] = material[14];
 			}
 		}
 
@@ -1138,7 +1155,7 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 
 	option.bone_exists = (bone_num > 0);
 	option.output_bone = 0;
-	option.bone_scale_rot = 1;
+	option.bone_scale_rot = 0;
 	option.bone_conv = 0;
 
 	option.hspfile = FILEOUT_CONFIRM;
@@ -2694,7 +2711,7 @@ name.toAnsiString().c_str(), IDENVER);
 			FMES(f, "\
 	// %f %f %f,  %f %f %f,  %f %f %f\n\
 ",
-	bone.rel_mtx.t[0], bone.rel_mtx.t[4], bone.rel_mtx.t[8],
+	bone.rel_mtx.t[0], bone.rel_mtx.t[5], bone.rel_mtx.t[10],
 	bone.rel_mtx.t[3], bone.rel_mtx.t[7], bone.rel_mtx.t[11],
 	bone.rel_mtx.t[12], bone.rel_mtx.t[13], bone.rel_mtx.t[14]);
 		}
