@@ -2710,7 +2710,7 @@ name.toAnsiString().c_str(), IDENVER);
 			fvmul v, sn, sn, sn\n\
 			v(3) = cos(half_ang)\n\
 			_qmul base_q, v, last_q\n\
-			setquat id, last_q(0), last_q(1), last_q(2), last_q(3)\n\
+			setquat result, last_q(0), last_q(1), last_q(2), last_q(3)\n\
 		} else {\n\
 			val = sin(ang) * 10.0\n\
 			x = bone_trans(0, cnt) + val\n\
