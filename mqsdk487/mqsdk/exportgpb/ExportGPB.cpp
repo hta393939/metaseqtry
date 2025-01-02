@@ -2676,7 +2676,7 @@ name.toAnsiString().c_str(), IDENVER);
 	ddim bone_rot, 4, bone_num\n\
 	gosub *set_bones\n\
 	ddim base_q, 4\n\
-	ddim q, 4\n\
+	ddim v, 4\n\
 	ddim last_q, 4\n\
 ", boneNum);
 	}
@@ -2686,8 +2686,8 @@ name.toAnsiString().c_str(), IDENVER);
 	h = ginfo(13)\n\
 	setcls 1, 0xf0f0ff\n\
 	gpload id, name\n\
-	//gpaddanim id, \"\", 0, 1000\n\
-	//gpact id, \"\", GPACT_PLAY\n\
+	//gpaddanim id, \"ani0\", 0, 1000\n\
+	//gpact id, \"ani0\", GPACT_PLAY\n\
 	gpnull camera_id\n\
 	far = vals(3) * 2.0\n\
 	if far < 768.0 : far = 768.0\n\
@@ -2698,26 +2698,25 @@ name.toAnsiString().c_str(), IDENVER);
 *main\n\
 	getreq time, SYSREQ_TIMER\n\
 	ang = double(time \\ 10000) / 10000.0 * M_PI * 2.0\n\
-	val = sin(ang) / 8.0\n\
 	redraw 0\n\
 	repeat bone_num\n\
 		gpnodeinfo result, id, GPNODEINFO_NODE, bone_names(cnt)\n\
 		if 1 {\n\
-			setangy result, val, val, val\n\
+			base_q(0) = bone_rot(0, cnt), bone_rot(1, cnt), bone_rot(2, cnt), bone_rot(3, cnt)\n\
+			half_ang = sin(ang) * 0.5 * 0.5\n\
+			sn = sin(half_ang)\n\
+			v(0) = 1.0, 1.0, 1.0\n\
+			fvunit v\n\
+			fvmul v, sn, sn, sn\n\
+			v(3) = cos(half_ang)\n\
+			_qmul base_q, v, last_q\n\
+			setquat id, last_q(0), last_q(1), last_q(2), last_q(3)\n\
 		} else {\n\
-			if 1 {\n\
-				val = sin(ang) * 10.0\n\
-				x = bone_trans(0, cnt) + val\n\
-				y = bone_trans(1, cnt) + val\n\
-				z = bone_trans(2, cnt) + val\n\
-				setpos result, x, y, z\n\
-			} else {\n\
-				base_q(0) = bone_rot(0, cnt), bone_rot(1, cnt), bone_rot(2, cnt), bone_rot(3, cnt)\n\
-				q(0) = sin(ang * 0.5), 0.0, 0.0, cos(ang * 0.5)\n\
-				last_q(0) = 0.0, 0.0, 0.0, 1.0\n\
-				_qmul base_q, q, last_q\n\
-				setquat id, last_q(0), last_q(1), last_q(2), last_q(3)\n\
-			}\n\
+			val = sin(ang) * 10.0\n\
+			x = bone_trans(0, cnt) + val\n\
+			y = bone_trans(1, cnt) + val\n\
+			z = bone_trans(2, cnt) + val\n\
+			setpos result, x, y, z\n\
 		}\n\
 	loop\n\
 	gpdraw\n\
