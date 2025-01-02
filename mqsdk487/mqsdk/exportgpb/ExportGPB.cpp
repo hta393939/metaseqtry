@@ -10,7 +10,7 @@
 #define MY_FILETYPE "HSP GPB(*.gpb)"
 #define MY_EXT "gpb"
 
-#define IDENVER "0.11.1"
+#define IDENVER "0.12.1"
 
 // 0 だと無効化
 #define USESCALING (0)
@@ -100,13 +100,13 @@ static int getRotTrans(const MQMatrix& mtx, /*MQuaternion& rot,*/ MQPoint& trans
 /// <summary>
 /// YXZ local
 /// </summary>
-/// <param name="ang"></param>
+/// <param name="ang">度単位</param>
 /// <returns></returns>
 static std::vector<float> _toQ(const MQAngle& ang) {
 	std::vector<float> ret;
-	auto ax = ang.pitch * 0.5f;
-	auto ay = ang.head * 0.5f;
-	auto az = ang.bank * 0.5f;
+	auto ax = ang.pitch * PI / 180.0f * 0.5f;
+	auto ay = ang.head * PI / 180.0f * 0.5f;
+	auto az = ang.bank * PI / 180.0f * 0.5f;
 	ret.push_back(  cosf(ax) * sinf(ay) * sinf(az) + sinf(ax) * cosf(ay) * cosf(az));
 	ret.push_back(- sinf(ax) * cosf(ay) * sinf(az) + cosf(ax) * sinf(ay) * cosf(az));
 	ret.push_back(  cosf(ax) * cosf(ay) * sinf(az) - sinf(ax) * sinf(ay) * cosf(az));
@@ -544,8 +544,8 @@ public:
 
 	MQComboBox* combo_materialconv;
 
-#if (USEEXTENDEDUI!=0)
 	MQComboBox* combo_bonescalerot;
+#if (USEEXTENDEDUI!=0)
 	MQComboBox* combo_boneconv;
 #endif
 
@@ -670,7 +670,7 @@ int GPBOptionDialog::addUIs(int parent_frame_id, MLanguage& language)
 	}
 
 	MQGroupBox* group = CreateGroupBox(&parent, language.Search("BoneTitle"));
-#if (USEEXTENDEDUI!=0)
+
 	{
 		hframe = CreateHorizontalFrame(group);
 		CreateLabel(hframe, language.Search("BoneScaleRot"));
@@ -682,7 +682,7 @@ int GPBOptionDialog::addUIs(int parent_frame_id, MLanguage& language)
 		w->SetFillBeforeRate(1);
 		this->combo_bonescalerot = w;
 	}
-
+#if (USEEXTENDEDUI!=0)
 	{
 		hframe = CreateHorizontalFrame(group);
 		CreateLabel(hframe, language.Search("BoneConv"));
@@ -739,10 +739,9 @@ int GPBOptionDialog::setValues(CreateDialogOptionParam *option)
 		this->combo_xmlanimfile->SetEnabled(boneui);
 		this->combo_xmlanimfile->SetCurrentIndex(option->input_xmlanim);
 
-#if (USEEXTENDEDUI!=0)
 		this->combo_bonescalerot->SetEnabled(boneui);
 		this->combo_bonescalerot->SetCurrentIndex(option->bone_scale_rot);
-
+#if (USEEXTENDEDUI!=0)
 		this->combo_boneconv->SetEnabled(boneui);
 		this->combo_boneconv->SetCurrentIndex(option->bone_conv);
 #endif
@@ -770,11 +769,10 @@ int GPBOptionDialog::getValues(CreateDialogOptionParam *option)
 
 	option->material_conv = this->combo_materialconv->GetCurrentIndex();
 
-#if (USEEXTENDEDUI!=0)
 	option->bone_scale_rot = this->combo_bonescalerot->GetCurrentIndex();
+#if (USEEXTENDEDUI!=0)
 	option->bone_conv = this->combo_boneconv->GetCurrentIndex();
 #else
-	option->bone_scale_rot = 0;
 	option->bone_conv = 0;
 #endif
 
@@ -788,8 +786,8 @@ BOOL GPBOptionDialog::ComboBoneChanged(MQWidgetBase *sender, MQDocument doc)
 {
 	auto enable = this->combo_bone->GetCurrentIndex() != 0;
 
-#if (USEEXTENDEDUI!=0)
 	this->combo_bonescalerot->SetEnabled(enable);
+#if (USEEXTENDEDUI!=0)
 	this->combo_boneconv->SetEnabled(enable);
 #endif
 
@@ -959,16 +957,14 @@ int ExportGPBPlugin::writeJoint(FILE* fh,
 		}
 		if (pParent) { // 前進差分
 			if (useScaleRot) {
-				// NOTE: 行列で計算する 未実装
+				// 行列で計算する
 				MQMatrix parentInv;
 				pParent->base_mtx.Inverse(parentInv);
 				MQMatrix localMtx;
 				localMtx = parentInv * curBone.base_mtx;
-				//curBone.rel_mtx = localMtx;
 				for (int row = 0; row < 4; ++row) {
 					for (int col = 0; col < 4; ++col) {
 						const auto sv = localMtx.t[row * 4 + col];
-						//material[row * 4 + col] = sv;
 						curBone.rel_mtx.t[row * 4 + col] = sv;
 					}
 				}
@@ -2736,22 +2732,14 @@ name.toAnsiString().c_str(), IDENVER);
 			const auto bone = bones[i];
 			const auto trans = bone.rel_mtx.GetTranslation();
 			const auto rot = _toQ(bone.rel_mtx.GetRotation());
-#if 0
-			FMES(f, "\
-	bone_names(%d) = \"%s\"\n\
-	bone_trans(0, %d) = %f, %f, %f\n\
-", i, boneNames[i].toAnsiString().c_str(),
-i, trans.x, trans.y, trans.z);
-#else
+
 			FMES(f, "\
 	bone_names(%d) = \"%s\"\n\
 	bone_trans(0, %d) = %f, %f, %f\n\
 	bone_rot(0, %d) = %f, %f, %f, %f\n\
 ", i, boneNames[i].toAnsiString().c_str(),
 	i, trans.x, trans.y, trans.z,
-	i, rot[0], rot[1], rot[2], rot[3]
-			);
-#endif
+	i, rot[0], rot[1], rot[2], rot[3]);
 
 #if 0
 			FMES(f, "\
