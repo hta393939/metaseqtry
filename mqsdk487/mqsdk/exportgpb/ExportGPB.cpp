@@ -10,7 +10,7 @@
 #define MY_FILETYPE "HSP GPB(*.gpb)"
 #define MY_EXT "gpb"
 
-#define IDENVER "0.10.2"
+#define IDENVER "0.11.1"
 
 // 0 だと無効化
 #define USESCALING (0)
@@ -2659,12 +2659,26 @@ name.toAnsiString().c_str(), IDENVER);
 
 	if (boneNum > 0) {
 		FMES(f, "\n\
-	sdim bone_names, 260, %d\n\
-	ddim bone_trans, 3, %d\n\
-	ddim bone_rot, 4, %d\n\
+#module\n\
+#deffunc _qmul array l, array r, array d, local lre, local rre\n\
+	lre = l(3)\n\
+	rre = r(3)\n\
+	d(3) = lre * rre - l(0) * r(0) - l(1) * r(1) - l(2) * r(2)\n\
+	d(0) = lre * r(0) + rre * l(0) + l(1) * r(2) - l(2) * r(1)\n\
+	d(1) = lre * r(1) + rre * l(1) + l(2) * r(0) - l(0) * r(2)\n\
+	d(2) = lre * r(2) + rre * l(2) + l(0) * r(1) - l(1) * r(0)\n\
+	return\n\
+#global\n\
+\n\
+	bone_num = %d\n\
+	sdim bone_names, 260, bone_num\n\
+	ddim bone_trans, 3, bone_num\n\
+	ddim bone_rot, 4, bone_num\n\
 	gosub *set_bones\n\
-	bone_num = length(bone_names)\n\
-", boneNum, boneNum, boneNum);
+	ddim base_q, 4\n\
+	ddim q, 4\n\
+	ddim last_q, 4\n\
+", boneNum);
 	}
 
 	FMES(f, "\
@@ -2672,10 +2686,12 @@ name.toAnsiString().c_str(), IDENVER);
 	h = ginfo(13)\n\
 	setcls 1, 0xf0f0ff\n\
 	gpload id, name\n\
+	//gpaddanim id, \"\", 0, 1000\n\
+	//gpact id, \"\", GPACT_PLAY\n\
 	gpnull camera_id\n\
 	far = vals(3) * 2.0\n\
 	if far < 768.0 : far = 768.0\n\
-	gpcamera camera_id, 45, double(w) / double(h), 0.002, far\n\
+	gpcamera camera_id, 45, double(w) / double(h), 0.08, far\n\
 	gpusecamera camera_id\n\
 	setpos camera_id, vals(0), vals(1), vals(2) + vals(3)\n\
 	gplookat camera_id, vals(0), vals(1), vals(2)\n\
@@ -2695,6 +2711,12 @@ name.toAnsiString().c_str(), IDENVER);
 				y = bone_trans(1, cnt) + val\n\
 				z = bone_trans(2, cnt) + val\n\
 				setpos result, x, y, z\n\
+			} else {\n\
+				base_q(0) = bone_rot(0, cnt), bone_rot(1, cnt), bone_rot(2, cnt), bone_rot(3, cnt)\n\
+				q(0) = sin(ang * 0.5), 0.0, 0.0, cos(ang * 0.5)\n\
+				last_q(0) = 0.0, 0.0, 0.0, 1.0\n\
+				_qmul base_q, q, last_q\n\
+				setquat id, last_q(0), last_q(1), last_q(2), last_q(3)\n\
 			}\n\
 		}\n\
 	loop\n\
