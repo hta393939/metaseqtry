@@ -492,12 +492,12 @@ int ExportGPBPlugin::writeJoint(FILE* fh,
 
 		MString parentName((pParent != nullptr) ? pParent->name : L"");
 		MAnsiString parentNameStr = parentName.toAnsiString();
-		DWORD parentByteNum = parentNameStr.length();
+		DWORD parentByteNum = (DWORD)parentNameStr.length();
 		fwrite(&parentByteNum, sizeof(DWORD), 1, fh);
 		fwrite(parentNameStr.c_str(), sizeof(char), parentByteNum, fh);
 
 		// 子ジョイント数
-		DWORD childNum = curBone.children.size();
+		DWORD childNum = (DWORD)curBone.children.size();
 		fwrite(&childNum, sizeof(DWORD), 1, fh);
 		for (unsigned int i = 0; i < childNum; ++i) {
 			this->writeJoint(fh,
@@ -513,7 +513,7 @@ int ExportGPBPlugin::writeJoint(FILE* fh,
 
 		{ // model
 			MAnsiString meshName("");
-			DWORD meshNameByteNum = meshName.length();
+			DWORD meshNameByteNum = (DWORD)meshName.length();
 			fwrite(&meshNameByteNum, sizeof(DWORD), 1, fh);
 			fwrite(meshName.c_str(), sizeof(char), meshNameByteNum, fh);
 		}
@@ -1289,7 +1289,7 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 	std::vector<DWORD> checkValues;
 	checkValues.push_back(0x39393901);
 
-	DWORD refNum = refTable.size();
+	DWORD refNum = (DWORD)refTable.size();
 	fwrite(&refNum, sizeof(DWORD), 1, fh);
 	for (auto& ref : refTable) // 書き込み有り
 	{
@@ -1298,7 +1298,7 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 		DWORD offset = ref.offset;
 		// バイト 名前
 		MAnsiString nameStr = ref.name.toAnsiString();
-		DWORD byteNum = nameStr.length(); // size_t は大きすぎる
+		DWORD byteNum = (DWORD)nameStr.length(); // size_t は大きすぎる
 		fwrite(&byteNum, sizeof(DWORD), 1, fh);
 		fwrite(nameStr.c_str(), sizeof(char), byteNum, fh);
 		// タイプ
@@ -1473,7 +1473,7 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 			}
 			DWORD type = GL_TRIANGLE; // TRI or LINE
 			DWORD format = GL_UNSIGNED_INT; // u16 or u32
-			DWORD byteNum = material.faceIndices.size() * sizeof(unsigned int);
+			DWORD byteNum = (material.faceIndices.size() * sizeof(unsigned int));
 			fwrite(&type, sizeof(DWORD), 1, fh);
 			fwrite(&format, sizeof(DWORD), 1, fh);
 			fwrite(&byteNum, sizeof(DWORD), 1, fh);
@@ -1519,7 +1519,7 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 		fwrite(&identity, sizeof(float), 16, fh); // 恒等行列
 
 		MAnsiString parentStr("");
-		DWORD parentByteNum = parentStr.length();
+		DWORD parentByteNum = (DWORD)parentStr.length();
 		fwrite(&parentByteNum, sizeof(DWORD), 1, fh);
 		fwrite(parentStr.c_str(), sizeof(char), parentByteNum, fh);
 
@@ -1533,7 +1533,7 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 		DWORD zero = 0;
 
 		MAnsiString meshName("#n0_Mesh");
-		DWORD meshNameByteNum = meshName.length();
+		DWORD meshNameByteNum = (DWORD)meshName.length();
 		fwrite(&meshNameByteNum, sizeof(DWORD), 1, fh);
 		fwrite(meshName.c_str(), sizeof(char), meshNameByteNum, fh);
 
@@ -1542,11 +1542,11 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 		if (hasSkin) {
 			fwrite(&identity, sizeof(float), 16, fh); // bindShape 恒等行列
 
-			DWORD jointCount = jointNames.size();
+			DWORD jointCount = (DWORD)jointNames.size();
 			fwrite(&jointCount, sizeof(DWORD), 1, fh);
 			for (const auto& jointName : jointNames) {
 				MAnsiString boneNameRef = MString(L"#" + jointName).toAnsiString();
-				DWORD boneNameByteNum = boneNameRef.length();
+				DWORD boneNameByteNum = (DWORD)boneNameRef.length();
 				fwrite(&boneNameByteNum, sizeof(DWORD), 1, fh);
 				fwrite(boneNameRef.c_str(), sizeof(char), boneNameByteNum, fh);
 			}
@@ -1586,7 +1586,7 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 				continue;
 			}
 			MAnsiString materialName(material.convName.toAnsiString());
-			DWORD nameByteNum = materialName.length();
+			DWORD nameByteNum = (DWORD)materialName.length();
 			fwrite(&nameByteNum, sizeof(DWORD), 1, fh);
 			fwrite(materialName.c_str(), sizeof(char), nameByteNum, fh);
 		}
@@ -1609,7 +1609,7 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 	}
 
 
-	DWORD cameraNameLength = scene.cameraName.length();
+	DWORD cameraNameLength = (DWORD)scene.cameraName.length();
 	fwrite(&cameraNameLength, sizeof(DWORD), 1, fh);
 	fwrite(scene.cameraName.c_str(), sizeof(char), cameraNameLength, fh);
 
@@ -1685,30 +1685,30 @@ BOOL ExportGPBPlugin::ExportFile(int index, const wchar_t *filename, MQDocument 
 int ExportGPBPlugin::writeAnimations(FILE* fh,
 	const ANIMATIONS& animations) {
 
-	DWORD animationNum = animations.anims.size();
+	DWORD animationNum = (DWORD)animations.anims.size();
 	fwrite(&animationNum, sizeof(DWORD), 1, fh);
 	for (unsigned int i = 0; i < animationNum; ++i) {
 		const auto anim = animations.anims[i];
 
 		MAnsiString animationName = MString(anim.id).toAnsiString(); // "animations"; // この名前であることが必要
-		DWORD animationNameByteNum = animationName.length();
+		DWORD animationNameByteNum = (DWORD)animationName.length();
 		fwrite(&animationNameByteNum, sizeof(DWORD), 1, fh);
 		fwrite(animationName.c_str(), sizeof(char), animationNameByteNum, fh);
 
-		DWORD channelNum = anim.channels.size();
+		DWORD channelNum = (DWORD)anim.channels.size();
 		fwrite(&channelNum, sizeof(DWORD), 1, fh);
 		for (unsigned int j = 0; j < channelNum; ++j) {
 			const auto ch = anim.channels[j];
 			MAnsiString targetName = MString(ch.targetId).toAnsiString();
 
-			DWORD targetNameLength = targetName.length();
+			DWORD targetNameLength = (DWORD)targetName.length();
 			fwrite(&targetNameLength, sizeof(DWORD), 1, fh);
 			fwrite(targetName.c_str(), sizeof(char), targetNameLength, fh);
 			DWORD valType = ch.attribVal; // tamane2 は 16 回転と移動
 			fwrite(&valType, sizeof(DWORD), 1, fh);
 
 			// キー配列
-			DWORD keyNum = ch.keytimes.size();
+			DWORD keyNum = (DWORD)ch.keytimes.size();
 			fwrite(&keyNum, sizeof(DWORD), 1, fh);
 			for (const auto& keyval : ch.keytimes) {
 				fwrite(&keyval, sizeof(DWORD), 1, fh);
@@ -1739,7 +1739,7 @@ int ExportGPBPlugin::writeAnimations(FILE* fh,
 			*/
 			{
 				// 値配列 個数
-				DWORD valNum = ch.values.size();
+				DWORD valNum = (DWORD)ch.values.size();
 				fwrite(&valNum, sizeof(DWORD), 1, fh);
 				for (const auto& val : ch.values) {
 					fwrite(&val, sizeof(float), 1, fh);
