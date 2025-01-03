@@ -194,6 +194,7 @@
     <ClCompile Include="..\MQWidget.cpp" />
     <ClCompile Include="..\Common\Language.cpp" />
     <ClCompile Include="ExportGPB.cpp" />
+    <ClCompile Include="ExportGPB.h" />
     <ClCompile Include="MAnsiString.cpp" />
     <ClCompile Include="MFileUtil.cpp" />
     <ClCompile Include="MQExportObject.cpp" />
