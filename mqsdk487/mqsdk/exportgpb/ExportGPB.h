@@ -10,7 +10,7 @@
 #define MY_FILETYPE "HSP GPB(*.gpb)"
 #define MY_EXT "gpb"
 
-#define IDENVER "0.12.1"
+#define IDENVER "0.13.1"
 
 // 0 だと無効化
 #define USESCALING (0)

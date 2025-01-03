@@ -2147,6 +2147,11 @@ int ExportGPBPlugin::makeHSP(FILE* f,
 
 	FMES(f, "\
 #include \"hgimg4.as\"\n\
+#const KEY_LEFT 1\n\
+#const KEY_UP 2\n\
+#const KEY_RIGHT 4\n\
+#const KEY_DOWN 8\n\
+\n\
 	ddim vals, 4\n\
 	vals(0) = %.6f, %.6f, %.6f, %.6f\n\
 ",
@@ -2196,9 +2201,32 @@ name.toAnsiString().c_str(), IDENVER);
 	gpusecamera camera_id\n\
 	setpos camera_id, vals(0), vals(1), vals(2) + vals(3)\n\
 	gplookat camera_id, vals(0), vals(1), vals(2)\n\
+	rr = vals(3)\n\
+	pitch = 0.0\n\
+	head = 0.0\n\
 *main\n\
 	getreq time, SYSREQ_TIMER\n\
 	ang = double(time \\ 10000) / 10000.0 * M_PI * 2.0\n\
+	stick key, 0x0f\n\
+	if key & KEY_LEFT {\n\
+		head += -1.0\n\
+	}\n\
+	if key& KEY_UP {\n\
+		pitch += 1.0\n\
+		if pitch > 89.0 {\n\
+			pitch = 89.0\n\
+		}\n\
+	}\n\
+	if key& KEY_RIGHT {\n\
+		head += 1.0\n\
+	}\n\
+	if key& KEY_DOWN {\n\
+		pitch += -1.0\n\
+		if pitch < -89.0 {\n\
+			pitch = -89.0\n\
+		}\n\
+	}\n\
+\n\
 	redraw 0\n\
 	repeat bone_num\n\
 		gpnodeinfo result, id, GPNODEINFO_NODE, bone_names(cnt)\n\
@@ -2220,6 +2248,16 @@ name.toAnsiString().c_str(), IDENVER);
 			setpos result, x, y, z\n\
 		}\n\
 	loop\n\
+\n\
+	pitch_ang = pitch * M_PI / 180.0\n\
+	head_ang = head * M_PI / 180.0\n\
+	hr = cos(pitch_ang)\n\
+	x = vals(0) + rr * sin(head_ang) * hr\n\
+	y = vals(1) + rr * sin(pitch_ang)\n\
+	z = vals(2) + rr * cos(head_ang) * hr\n\
+	setpos camera_id, x, y, z\n\
+	gplookat camera_id, vals(0), vals(1), vals(2)\n\
+\n\
 	gpdraw\n\
 	pos 8, 8\n\
 	mes verstr\n\
