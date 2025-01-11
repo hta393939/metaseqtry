@@ -2027,6 +2027,7 @@ material textured\n\
 		bool use_spc = !(material.specular[0] <= 0.0f && material.specular[1] <= 0.0f && material.specular[2] <= 0.0f);
 
 		std::vector<MString> defs;
+		defs.push_back(L"MODULATE_COLOR");
 		if (jointNum > 0) {
 			defs.push_back(L"SKINNING");
 			defs.push_back(MString::format(L"SKINNING_JOINT_COUNT %d", jointNum));
@@ -2056,6 +2057,9 @@ material textured\n\
 		FMES(f, "\
 	u_specularExponent = %.6f\n\
 ", material.spc_pow);
+		FMES(f, "\
+	u_modulateColor = 1.0, 1.0, 1.0, 1.0\n\
+");
 
 		if (jointNum > 0) {
 			FMES(f, "\
